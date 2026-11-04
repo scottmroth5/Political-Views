@@ -1,0 +1,218 @@
+// Phase 1 relational model. See docs/decisions.md for rationale.
+// All ids are UUIDs. Deleting a DiscoverySession cascades to every row that
+// belongs to it (responses, beliefs, evidence, revisions, snapshots).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum DiscoveryMode {
+  GUIDED
+  CONVERSATION
+}
+
+enum SessionStatus {
+  ACTIVE
+  COMPLETED
+}
+
+enum ResponseType {
+  SINGLE_CHOICE
+  MULTI_CHOICE
+  FREE_TEXT
+}
+
+enum ResponseOutcome {
+  ANSWERED
+  SKIPPED
+  UNSURE
+}
+
+enum EditorialStatus {
+  DRAFT
+  REVIEWED
+}
+
+enum BeliefStatus {
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+}
+
+enum RevisionActor {
+  USER
+  SYSTEM
+}
+
+model User {
+  id        String             @id @default(uuid()) @db.Uuid
+  // Nullable until optional registration (US-05). Auth identity lives elsewhere.
+  email     String?            @unique
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  deletedAt DateTime?
+  sessions  DiscoverySession[]
+}
+
+model DiscoverySession {
+  id        String            @id @default(uuid()) @db.Uuid
+  userId    String?           @db.Uuid
+  user      User?             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // SHA-256 of the anonymous cookie secret. The plaintext token is never stored.
+  tokenHash String            @unique
+  mode      DiscoveryMode
+  status    SessionStatus     @default(ACTIVE)
+  expiresAt DateTime
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  responses Response[]
+  beliefs   Belief[]
+  snapshots ProfileSnapshot[]
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([status])
+}
+
+model IssueCategory {
+  id           String  @id @default(uuid()) @db.Uuid
+  slug         String  @unique
+  label        String
+  description  String?
+  displayOrder Int
+  active       Boolean @default(true)
+  topics       Topic[]
+}
+
+model Topic {
+  id           String        @id @default(uuid()) @db.Uuid
+  categoryId   String        @db.Uuid
+  category     IssueCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  slug         String        @unique
+  label        String
+  displayOrder Int           @default(0)
+  active       Boolean       @default(true)
+  questions    Question[]
+  beliefs      Belief[]
+
+  @@index([categoryId])
+}
+
+model Question {
+  id                String          @id @default(uuid()) @db.Uuid
+  topicId           String          @db.Uuid
+  topic             Topic           @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  // Stable key so seeding is idempotent and content can be versioned.
+  slug              String          @unique
+  prompt            String
+  explanationPrompt String?
+  responseType      ResponseType
+  // SINGLE_CHOICE / MULTI_CHOICE: [{ "value": string, "label": string, "exclusive"?: true }]
+  // An exclusive choice (e.g. "keep the current approach") cannot be combined with others.
+  choices           Json?
+  version           Int             @default(1)
+  active            Boolean         @default(true)
+  editorialStatus   EditorialStatus @default(DRAFT)
+  displayOrder      Int             @default(0)
+  responses         Response[]
+
+  @@index([topicId])
+  @@index([active, editorialStatus])
+}
+
+model Response {
+  id              String           @id @default(uuid()) @db.Uuid
+  sessionId       String           @db.Uuid
+  session         DiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Null for open-conversation messages.
+  questionId      String?          @db.Uuid
+  question        Question?        @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  // The question version the user actually saw.
+  questionVersion Int?
+  mode            DiscoveryMode
+  outcome         ResponseOutcome
+  // Selected choice values in the question's display order. Exactly one for
+  // SINGLE_CHOICE, one or more for MULTI_CHOICE, empty otherwise.
+  choiceValues    String[]         @default([])
+  // Free-text answer, optional explanation, or chat message.
+  text            String?
+  // User-rated importance of this issue (1-5), validated in the domain layer.
+  importance      Int?
+  idempotencyKey  String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  evidence        BeliefEvidence[]
+
+  // One guided answer per question per session; NULL questionIds (chat) are not constrained.
+  @@unique([sessionId, questionId])
+  @@unique([sessionId, idempotencyKey])
+  @@index([sessionId, createdAt])
+}
+
+model Belief {
+  id                   String           @id @default(uuid()) @db.Uuid
+  sessionId            String           @db.Uuid
+  session              DiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Nullable: a conversation belief may not map cleanly to a seeded topic yet.
+  topicId              String?          @db.Uuid
+  topic                Topic?           @relation(fields: [topicId], references: [id], onDelete: Restrict)
+  position             String
+  nuance               String?
+  status               BeliefStatus     @default(SUGGESTED)
+  // User-provided (1-5). Kept separate from model certainty.
+  importance           Int?
+  conviction           Int?
+  // Model certainty (0-1). Never shown as the user's conviction.
+  extractionConfidence Float?
+  // Optimistic-concurrency version.
+  version              Int              @default(1)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+  evidence             BeliefEvidence[]
+  revisions            BeliefRevision[]
+
+  @@index([sessionId, status])
+  @@index([topicId])
+}
+
+model BeliefEvidence {
+  id                String   @id @default(uuid()) @db.Uuid
+  beliefId          String   @db.Uuid
+  belief            Belief   @relation(fields: [beliefId], references: [id], onDelete: Cascade)
+  responseId        String   @db.Uuid
+  response          Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  supportingExcerpt String?
+  createdAt         DateTime @default(now())
+
+  @@unique([beliefId, responseId])
+  @@index([responseId])
+}
+
+model BeliefRevision {
+  id            String        @id @default(uuid()) @db.Uuid
+  beliefId      String        @db.Uuid
+  belief        Belief        @relation(fields: [beliefId], references: [id], onDelete: Cascade)
+  previousValue Json?
+  newValue      Json
+  actor         RevisionActor
+  reason        String?
+  createdAt     DateTime      @default(now())
+
+  @@index([beliefId, createdAt])
+}
+
+model ProfileSnapshot {
+  id          String           @id @default(uuid()) @db.Uuid
+  sessionId   String           @db.Uuid
+  session     DiscoverySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  // Must keep confirmed and suggested beliefs in distinct keys.
+  summary     Json
+  generatedAt DateTime         @default(now())
+
+  @@index([sessionId, generatedAt])
+}
