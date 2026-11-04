@@ -39,3 +39,11 @@ Source spec: `Political_Views_App_Claude_Code_Implementation_PRD.docx` (§12).
     minors, documents), each as its own question, with especially careful editorial review.
 14. **M4: neutral clarification for combinations that look contradictory** in multi-select
     answers (e.g. both "much stricter" and "loosen" on firearms) — ask, never correct.
+
+## Deployment and automated testing (2026-11-04)
+
+See [deployment-plan.md](deployment-plan.md) (Lightsail, automatic deploys). Existing automated tests: format, lint, typecheck,
+51 unit and 17 integration tests, and a production build, all in CI on every push. Still to add:
+npm audit, CodeQL gate, gitleaks + pre-commit hook, Playwright E2E with axe accessibility checks,
+ZAP full scan against the CI-run app, Trivy image/config scans, ShellCheck, post-deploy smoke tests,
+weekly ZAP passive scan of production, Dependabot, and monthly backup restore tests.
