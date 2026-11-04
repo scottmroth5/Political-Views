@@ -134,7 +134,7 @@ on.
 ### Phase A — Domain: `views.scottmroth.com` (Porkbun DNS) **(you)**
 
 `scottmroth.com` uses Porkbun's nameservers, and the other apps are plain `A` records to Lightsail
-static IPs (`health.scottmroth.com`, `jobs.scottmroth.com`). Do the same, **after** Phase D step 3
+static IPs. Do the same, **after** Phase D step 3
 gives you the static IP:
 
 1. Sign in at porkbun.com → **Account → Domain Management**.
