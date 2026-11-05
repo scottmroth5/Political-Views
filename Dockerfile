@@ -6,7 +6,7 @@
 # Stages: deps (npm ci) -> build (next build + bundled scripts) -> tools (Prisma CLI for
 # migrations) -> runtime (standalone server, non-root, no npm).
 
-FROM node:22-bookworm-slim AS base
+FROM node:26-bookworm-slim AS base
 RUN apt-get update \
  && apt-get install -y --no-install-recommends openssl ca-certificates \
  && rm -rf /var/lib/apt/lists/*
@@ -33,7 +33,7 @@ RUN node -e "const p=require('/tmp/package.json'); require('fs').writeFileSync('
  && npm install --no-audit --no-fund \
  && rm -rf /root/.npm
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:26-bookworm-slim AS runtime
 # Debian security updates on top of the base image; npm, npx, corepack and yarn removed (the server
 # only runs node, and they carry their own dependencies and vulnerabilities).
 RUN apt-get update \
