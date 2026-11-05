@@ -11,6 +11,8 @@ import { GET as getQuestionById } from "@/app/api/questions/[id]/route";
 import { prisma } from "@/lib/db";
 import { hashSessionToken } from "@/domain/sessions/session-token";
 import type { QuestionDto } from "@/domain/questions/question-types";
+import { contentHash, questionContent } from "../../prisma/editorial";
+import { seedCategories } from "../../prisma/seed-data";
 import { seedTaxonomy } from "../../prisma/seed-taxonomy";
 import { apiRequest, guidedAnswer, sessionCookieFrom } from "./helpers";
 
@@ -46,6 +48,35 @@ describe("seeding", () => {
     const after = await prisma.question.findMany({ select: { slug: true, version: true } });
     expect(after).toEqual(expect.arrayContaining(before));
     expect(after).toHaveLength(before.length);
+  });
+});
+
+describe("editorial review", () => {
+  it("marks a question REVIEWED only while a review matches its current wording", async () => {
+    const q = seedCategories[0]!.questions[0]!;
+    const matching = {
+      slug: q.slug,
+      contentHash: contentHash(questionContent(q)),
+      reviewedOn: "2026-11-05",
+    };
+    const status = async () =>
+      (await prisma.question.findUniqueOrThrow({ where: { slug: q.slug } })).editorialStatus;
+    try {
+      const result = await seedTaxonomy(prisma, [matching]);
+      expect(result.reviewed).toBe(1);
+      expect(await status()).toBe("REVIEWED");
+
+      // A review of older wording no longer counts.
+      await seedTaxonomy(prisma, [{ ...matching, contentHash: "0000000000000000" }]);
+      expect(await status()).toBe("DRAFT");
+
+      // Withdrawing the review returns it to DRAFT too.
+      await seedTaxonomy(prisma, [matching]);
+      await seedTaxonomy(prisma, []);
+      expect(await status()).toBe("DRAFT");
+    } finally {
+      await seedTaxonomy(prisma);
+    }
   });
 });
 

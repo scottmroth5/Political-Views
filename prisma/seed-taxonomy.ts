@@ -1,4 +1,10 @@
 import type { PrismaClient } from "@prisma/client";
+import {
+  committedReviews,
+  editorialStatus,
+  questionContent,
+  type EditorialReview,
+} from "./editorial";
 import { seedCategories } from "./seed-data";
 
 function canonicalChoices(raw: unknown): string {
@@ -15,11 +21,15 @@ function canonicalChoices(raw: unknown): string {
 /**
  * Idempotent upsert of the taxonomy by slug. When a question's wording or
  * choices change, its version is incremented so stored responses still record
- * which wording the user saw. Editorial status is never downgraded by reseeding.
+ * which wording the user saw. Editorial status comes only from the reviews file
+ * (prisma/editorial-reviews.json): REVIEWED when a review matches the current
+ * wording, otherwise DRAFT.
  */
 export async function seedTaxonomy(
   prisma: PrismaClient,
-): Promise<{ categories: number; questions: number }> {
+  reviews: readonly EditorialReview[] = committedReviews,
+): Promise<{ categories: number; questions: number; reviewed: number }> {
+  let reviewedCount = 0;
   let questionCount = 0;
 
   for (const [categoryIndex, c] of seedCategories.entries()) {
@@ -46,21 +56,20 @@ export async function seedTaxonomy(
         update: { label: q.topic.label, categoryId: category.id, displayOrder: questionIndex },
       });
 
-      const content = {
-        prompt: q.prompt,
-        explanationPrompt: q.explanationPrompt ?? null,
-        responseType: q.multiple ? ("MULTI_CHOICE" as const) : ("SINGLE_CHOICE" as const),
-        choices: q.choices.map((ch) => ({
-          value: ch.value,
-          label: ch.label,
-          ...(ch.exclusive ? { exclusive: true } : {}),
-        })),
-      };
+      const content = questionContent(q);
+      const status = editorialStatus(q, reviews);
+      if (status === "REVIEWED") reviewedCount++;
 
       const existing = await prisma.question.findUnique({ where: { slug: q.slug } });
       if (!existing) {
         await prisma.question.create({
-          data: { slug: q.slug, topicId: topic.id, displayOrder: 0, ...content },
+          data: {
+            slug: q.slug,
+            topicId: topic.id,
+            displayOrder: 0,
+            editorialStatus: status,
+            ...content,
+          },
         });
       } else {
         const changed =
@@ -74,9 +83,8 @@ export async function seedTaxonomy(
           data: {
             topicId: topic.id,
             ...content,
-            ...(changed
-              ? { version: existing.version + 1, editorialStatus: "DRAFT" as const }
-              : {}),
+            editorialStatus: status,
+            ...(changed ? { version: existing.version + 1 } : {}),
           },
         });
       }
@@ -84,5 +92,5 @@ export async function seedTaxonomy(
     }
   }
 
-  return { categories: seedCategories.length, questions: questionCount };
+  return { categories: seedCategories.length, questions: questionCount, reviewed: reviewedCount };
 }

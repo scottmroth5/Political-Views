@@ -28,6 +28,7 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
     "sessions:purge": "tsx scripts/purge-expired-sessions.ts",
+    "review:questions": "tsx scripts/editorial-review.ts",
     "postinstall": "prisma generate",
     "prepare": "node scripts/install-hooks.mjs"
   },

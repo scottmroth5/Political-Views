@@ -56,6 +56,7 @@ On Windows PowerShell use `Copy-Item .env.example .env` instead of `cp`.
 | `npm run db:migrate`              | Create/apply a migration after editing `prisma/schema.prisma`                                                               |
 | `npm run db:reset`                | Drop, re-migrate and re-seed the dev database                                                                               |
 | `npm run sessions:purge`          | Delete expired anonymous sessions and their data                                                                            |
+| `npm run review:questions`        | Editorial review sheet; `-- mark <slug>` / `unmark` / `status` (see docs/editorial-review.md)                               |
 | `npm run test:e2e`                | Playwright + axe on the production build (`npm run build` first; needs `db:up`; one-time `npx playwright install chromium`) |
 | `npm run check:secrets`           | Secret/personal-data check of staged files (runs as the pre-commit hook; `-- --all` for every file)                         |
 

@@ -226,7 +226,7 @@ real server: `setup-server.sh`, `deploy.sh` and `backup.sh` end to end.
    failed for lack of access, then run Deploy again.
 3. Seed questions (server SSH): `sudo -u deploy /opt/political-views/deploy.sh seed`. With
    `REQUIRE_REVIEWED_QUESTIONS=true` only REVIEWED questions are shown, so the site shows none until
-   the editorial review (Phase F) marks them; that's intended.
+   the editorial review (Phase F and docs/editorial-review.md) marks them; that's intended.
 4. Test a backup: `sudo -u deploy /opt/political-views/backup.sh`, then download it from the
    bucket and decrypt it on your PC with `age -d -i <key from password manager> file.dump.age`.
 5. Verify: SSL Labs grade A for `views.scottmroth.com`; `curl -I https://views.scottmroth.com`

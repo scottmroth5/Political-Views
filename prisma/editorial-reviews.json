@@ -1,0 +1,4 @@
+{
+  "$comment": "Editorial reviews of seed questions. Edit with `npm run review:questions -- mark <slug>`; see docs/editorial-review.md. Public file: no names or personal details.",
+  "reviews": []
+}

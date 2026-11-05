@@ -84,6 +84,7 @@ depth are M4. AI never selects questions.
 are stored with `editorialStatus = DRAFT`. `REQUIRE_REVIEWED_QUESTIONS=true` (required before
 beta) serves only REVIEWED questions. Editing a question's wording in the seed bumps its version
 and resets it to DRAFT. A human, ideally politically diverse, editorial review is required.
+Superseded in part by D-024: editorial status now comes from a reviews file.
 
 ## D-013 — Belief.topicId is nullable
 
@@ -196,3 +197,12 @@ links to the response through `BeliefEvidence`, which records the choice
 - Answers saved before this change have no derived beliefs until they are saved again.
 - Conversation-mode extraction (M3) will add SUGGESTED beliefs with `choiceValue` null and an
   `extractionConfidence`; the same ownership rules apply.
+
+## D-024 — Editorial reviews recorded in the repo, tied to exact wording (2026-11-05)
+
+`prisma/editorial-reviews.json` lists reviewed questions as `{ slug, contentHash, reviewedOn, note? }`.
+The hash covers everything a user sees (prompt, explanation prompt, single vs. multi-select, and
+each choice's value, label, exclusivity and order), so any wording change returns the question to
+DRAFT until it is reviewed again. Seeding sets every question's status from the file (no database
+or admin UI needed, and the review history is in git). `npm run review:questions` writes a review
+sheet and marks or withdraws reviews. The file is public, so it holds no reviewer names.
