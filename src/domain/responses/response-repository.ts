@@ -1,5 +1,5 @@
 import { Prisma, type Response, type ResponseOutcome } from "@prisma/client";
-import { prisma } from "@/lib/db";
+import { prisma, type Db } from "@/lib/db";
 
 export function findResponseByIdempotencyKey(
   sessionId: string,
@@ -30,14 +30,18 @@ export interface GuidedAnswerWrite {
   importance: number | null;
 }
 
-export function createGuidedResponse(data: GuidedAnswerWrite): Promise<Response> {
-  return prisma.response.create({ data: { ...data, mode: "GUIDED" } });
+export function createGuidedResponse(data: GuidedAnswerWrite, db: Db = prisma): Promise<Response> {
+  return db.response.create({ data: { ...data, mode: "GUIDED" } });
 }
 
 /** Editing an answer keeps the same row so belief evidence links stay valid. */
-export function updateGuidedResponse(id: string, data: GuidedAnswerWrite): Promise<Response> {
+export function updateGuidedResponse(
+  id: string,
+  data: GuidedAnswerWrite,
+  db: Db = prisma,
+): Promise<Response> {
   const { outcome, choiceValues, text, importance, questionVersion, idempotencyKey } = data;
-  return prisma.response.update({
+  return db.response.update({
     where: { id },
     data: { outcome, choiceValues, text, importance, questionVersion, idempotencyKey },
   });

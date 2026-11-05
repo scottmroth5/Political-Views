@@ -7,6 +7,7 @@ import {
 } from "@/app/api/sessions/current/route";
 import { POST as postResponse } from "@/app/api/responses/route";
 import { GET as getNextQuestion } from "@/app/api/questions/next/route";
+import { GET as getQuestionById } from "@/app/api/questions/[id]/route";
 import { prisma } from "@/lib/db";
 import { hashSessionToken } from "@/domain/sessions/session-token";
 import type { QuestionDto } from "@/domain/questions/question-types";
@@ -158,6 +159,50 @@ describe("guided discovery", () => {
     const rows = await prisma.response.findMany();
     expect(rows).toHaveLength(1);
     expect(rows[0]!.choiceValues).toEqual([question!.choices[1]!.value]);
+  });
+
+  it("returns a question with this session's earlier answer for editing", async () => {
+    const cookie = await startSession();
+    const { question } = await nextQuestion(cookie);
+    const id = question!.id;
+    const fetchForEdit = (c: string, qid: string) =>
+      getQuestionById(apiRequest(`/api/questions/${qid}`, { cookie: c }), {
+        params: Promise.resolve({ id: qid }),
+      });
+
+    const before = await fetchForEdit(cookie, id);
+    expect(before.status).toBe(200);
+    expect((await before.json()).answer).toBeNull();
+
+    await answer(
+      cookie,
+      guidedAnswer(id, {
+        choiceValues: [question!.choices[0]!.value],
+        text: "Synthetic reason",
+        importance: 4,
+      }),
+    );
+    const after = await fetchForEdit(cookie, id);
+    const body = await after.json();
+    expect(body.question.id).toBe(id);
+    expect(body.answer).toEqual({
+      outcome: "ANSWERED",
+      choiceValues: [question!.choices[0]!.value],
+      text: "Synthetic reason",
+      importance: 4,
+    });
+
+    // Another session sees the question but not this session's answer.
+    const other = await startSession();
+    expect((await (await fetchForEdit(other, id)).json()).answer).toBeNull();
+
+    // Unknown or malformed ids, and no session, are rejected.
+    expect((await fetchForEdit(cookie, "00000000-0000-4000-8000-000000000000")).status).toBe(404);
+    expect((await fetchForEdit(cookie, "not-a-uuid")).status).toBe(404);
+    const anonymous = await getQuestionById(apiRequest(`/api/questions/${id}`), {
+      params: Promise.resolve({ id }),
+    });
+    expect(anonymous.status).toBe(401);
   });
 
   it("rejects a choice that does not belong to the question", async () => {

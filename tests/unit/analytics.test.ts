@@ -46,6 +46,22 @@ describe("analyticsEvent allowlist", () => {
       app: "political_views",
       $process_person_profile: false,
     });
+    // A changed answer says only that one was changed, never which question or what to.
+    const changed = analyticsEvent("answer_changed", { questionId: "abc", outcome: "x" }, config);
+    expect(changed!.properties).toEqual({ app: "political_views", $process_person_profile: false });
+    // A profile review says only what kind of action, never which belief or its wording.
+    const reviewed = analyticsEvent(
+      "belief_reviewed",
+      { action: "edited", position: "my words", beliefId: "abc" },
+      config,
+    );
+    expect(reviewed!.properties).toEqual({
+      app: "political_views",
+      $process_person_profile: false,
+      action: "edited",
+    });
+    expect(analyticsEvent("belief_reviewed", { action: "my words" }, config)).toBeNull();
+    expect(pageFromPath("/profile")).toBe("profile");
   });
 
   it("maps paths to page names, never sending the path itself", () => {

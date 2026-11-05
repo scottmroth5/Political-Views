@@ -1,7 +1,9 @@
 import type { Response } from "@prisma/client";
+import { syncGuidedBeliefs } from "@/domain/beliefs/belief-service";
 import { DomainError } from "@/domain/errors";
 import { findServableQuestion } from "@/domain/questions/question-repository";
 import { parseChoices } from "@/domain/questions/question-types";
+import { prisma, type Db } from "@/lib/db";
 import { getEnv } from "@/lib/env";
 import { normalizeGuidedAnswer } from "./answer-validation";
 import {
@@ -69,10 +71,8 @@ export async function recordGuidedResponse(
   if (!question)
     throw new DomainError("QUESTION_NOT_FOUND", "That question is not available.", 404);
 
-  const answer = normalizeGuidedAnswer(
-    { responseType: question.responseType, choices: parseChoices(question.choices) },
-    input,
-  );
+  const choices = parseChoices(question.choices);
+  const answer = normalizeGuidedAnswer({ responseType: question.responseType, choices }, input);
   const write: GuidedAnswerWrite = {
     sessionId,
     questionId: question.id,
@@ -81,12 +81,29 @@ export async function recordGuidedResponse(
     ...answer,
   };
 
+  // The answer and the suggested beliefs derived from it are saved together.
+  const save = (op: (db: Db) => Promise<Response>) =>
+    prisma.$transaction(async (tx) => {
+      const saved = await op(tx);
+      await syncGuidedBeliefs(tx, {
+        sessionId,
+        topicId: question.topicId,
+        responseId: saved.id,
+        answer: saved,
+        choices,
+      });
+      return toDto(saved);
+    });
+
   const existing = await findGuidedResponse(sessionId, question.id);
   if (existing)
-    return { response: toDto(await updateGuidedResponse(existing.id, write)), status: "updated" };
+    return {
+      response: await save((db) => updateGuidedResponse(existing.id, write, db)),
+      status: "updated",
+    };
 
   try {
-    return { response: toDto(await createGuidedResponse(write)), status: "created" };
+    return { response: await save((db) => createGuidedResponse(write, db)), status: "created" };
   } catch (error) {
     if (!isUniqueConstraintError(error)) throw error;
     // Lost a race: either a duplicate retry or a concurrent answer to the same question.
@@ -94,7 +111,10 @@ export async function recordGuidedResponse(
     if (raced) return raced;
     const current = await findGuidedResponse(sessionId, question.id);
     if (!current) throw error;
-    return { response: toDto(await updateGuidedResponse(current.id, write)), status: "updated" };
+    return {
+      response: await save((db) => updateGuidedResponse(current.id, write, db)),
+      status: "updated",
+    };
   }
 }
 

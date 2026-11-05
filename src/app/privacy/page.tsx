@@ -18,8 +18,10 @@ export default function PrivacyPage() {
 
       <h2 className="text-lg font-semibold">What we collect</h2>
       <p>
-        The answers you give, including any optional explanations and importance ratings, linked to
-        an anonymous session. We do not ask for your name or email to get started.
+        The answers you give, including any optional explanations and importance ratings, and your
+        profile: the beliefs suggested from the choices you picked and anything you confirm, reword,
+        reject or rate. All of it is linked to an anonymous session. We do not ask for your name or
+        email to get started.
       </p>
 
       <h2 className="text-lg font-semibold">How your session works</h2>
@@ -27,7 +29,7 @@ export default function PrivacyPage() {
         A random, private cookie identifies your session on this browser. We store only a one-way
         hash of it. If you clear cookies or switch devices or browsers, you won&apos;t be able to
         return to the session. Anonymous sessions expire {getEnv().SESSION_TTL_DAYS} days after they
-        start, and their answers are then deleted.
+        start, and their answers and profile are then deleted.
       </p>
 
       <h2 className="text-lg font-semibold">How we use it</h2>
@@ -41,13 +43,14 @@ export default function PrivacyPage() {
       <p>
         To understand how the site is used, it may count a few events with PostHog (posthog.com,
         United States): which page was opened, that discovery was started, that a question was
-        answered, marked &ldquo;not sure&rdquo; or skipped, that the mode was switched, that the
-        guided questions were finished, and that a session was deleted. <strong>Never</strong> sent:
-        your answers or choices, which question or topic you were on, anything you type, the address
-        you came from, or anything that identifies you. No cookie is set for this, and each page
-        load gets a new random id, so visits are not linked to each other or to your session.
-        PostHog receives your network address with each request, as any website does, and is set not
-        to store it. If your browser sends Global Privacy Control or Do Not Track, nothing is sent.
+        answered, marked &ldquo;not sure&rdquo;, skipped or changed, that a profile belief was
+        confirmed, reworded, rejected or rated, that the mode was switched, that the guided
+        questions were finished, and that a session was deleted. <strong>Never</strong> sent: your
+        answers or choices, which question or topic you were on, anything you type, the address you
+        came from, or anything that identifies you. No cookie is set for this, and each page load
+        gets a new random id, so visits are not linked to each other or to your session. PostHog
+        receives your network address with each request, as any website does, and is set not to
+        store it. If your browser sends Global Privacy Control or Do Not Track, nothing is sent.
         Blocking it doesn&apos;t change how the site works.
       </p>
 

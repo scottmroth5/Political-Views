@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ExistingAnswerDto } from "@/domain/questions/question-service";
 import type { DiscoveryProgress, QuestionDto } from "@/domain/questions/question-types";
 import { track } from "@/lib/analytics";
 import { ApiError, apiFetch } from "@/lib/api-client";
@@ -10,7 +12,12 @@ type Outcome = "ANSWERED" | "SKIPPED" | "UNSURE";
 
 const IMPORTANCE_LABELS = ["Not very", "Somewhat", "Moderately", "Very", "Extremely"];
 
-export function GuidedDiscovery() {
+/**
+ * Shows the next unanswered question, or, with editQuestionId, an earlier question pre-filled with
+ * the saved answer so it can be changed.
+ */
+export function GuidedDiscovery({ editQuestionId }: { editQuestionId?: string }) {
+  const editing = editQuestionId !== undefined;
   const router = useRouter();
   const [question, setQuestion] = useState<QuestionDto | null>(null);
   const [progress, setProgress] = useState<DiscoveryProgress | null>(null);
@@ -28,26 +35,35 @@ export function GuidedDiscovery() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch<{ question: QuestionDto | null; progress: DiscoveryProgress }>(
-        "/api/questions/next",
-      );
-      setQuestion(data.question);
-      if (!data.question && data.progress.respondedQuestions > 0) track("guided_finished");
-      setProgress(data.progress);
-      setSelected([]);
-      setExplanation("");
-      setImportance(null);
+      let answer: ExistingAnswerDto | null = null;
+      if (editQuestionId !== undefined) {
+        const data = await apiFetch<{ question: QuestionDto; answer: ExistingAnswerDto | null }>(
+          `/api/questions/${encodeURIComponent(editQuestionId)}`,
+        );
+        setQuestion(data.question);
+        answer = data.answer;
+      } else {
+        const data = await apiFetch<{ question: QuestionDto | null; progress: DiscoveryProgress }>(
+          "/api/questions/next",
+        );
+        setQuestion(data.question);
+        if (!data.question && data.progress.respondedQuestions > 0) track("guided_finished");
+        setProgress(data.progress);
+      }
+      setSelected(answer?.choiceValues ?? []);
+      setExplanation(answer?.text ?? "");
+      setImportance(answer?.importance ?? null);
       idempotencyKey.current = crypto.randomUUID();
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         router.replace("/?expired=1");
         return;
       }
-      setError(e instanceof Error ? e.message : "Could not load the next question.");
+      setError(e instanceof Error ? e.message : "Could not load the question.");
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, editQuestionId]);
 
   useEffect(() => {
     void loadNext();
@@ -99,6 +115,13 @@ export function GuidedDiscovery() {
           importance: outcome === "SKIPPED" ? null : importance,
         },
       });
+      if (editing) {
+        track("answer_changed");
+        // Back to the next unanswered question; the page re-renders the answer list.
+        router.replace("/discovery/guided");
+        router.refresh(); // also drops cached pages (the profile) that show the old answer
+        return;
+      }
       track("question_responded", { outcome: outcome.toLowerCase() });
       router.refresh(); // update the server-rendered answer list
       await loadNext();
@@ -117,9 +140,25 @@ export function GuidedDiscovery() {
     return <p aria-live="polite">Loading question…</p>;
   }
 
+  if (editing && !question) {
+    return (
+      <div className="rounded-lg border border-slate-300 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+        <p role="alert">{error ?? "That question is not available."}</p>
+        <Link href="/discovery/guided" className="mt-3 inline-block font-medium underline">
+          Back to the questions
+        </Link>
+      </div>
+    );
+  }
+
   return (
     <section aria-labelledby="question-heading" className="space-y-4">
-      {progress && (
+      {editing && (
+        <p className="rounded-md bg-accent-soft/40 p-3 text-sm dark:bg-teal-950" aria-live="polite">
+          You&apos;re changing an earlier answer. Saving replaces it.
+        </p>
+      )}
+      {!editing && progress && (
         <p className="text-sm text-slate-600 dark:text-slate-300" aria-live="polite">
           {progress.respondedQuestions} of {progress.totalQuestions} questions ·{" "}
           {progress.categoriesTouched} of {progress.categoriesTotal} issue areas
@@ -137,9 +176,14 @@ export function GuidedDiscovery() {
             You&apos;ve reached the end of the available guided questions
           </h2>
           <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-            Your answers are saved. A preliminary profile preview is planned for a later release and
-            is not available yet.
+            Your answers are saved, and you can still change any of them below.
           </p>
+          <Link
+            href="/profile"
+            className="mt-3 inline-block font-medium text-accent-strong underline underline-offset-4 dark:text-teal-300"
+          >
+            Review your profile
+          </Link>
         </div>
       ) : (
         <form
@@ -244,7 +288,7 @@ export function GuidedDiscovery() {
               disabled={submitting}
               className="rounded-md bg-accent px-4 py-2 font-medium text-white hover:bg-accent-strong disabled:opacity-60"
             >
-              {submitting ? "Saving…" : "Save answer"}
+              {submitting ? "Saving…" : editing ? "Save changes" : "Save answer"}
             </button>
             <button
               type="button"
@@ -262,6 +306,14 @@ export function GuidedDiscovery() {
             >
               Skip
             </button>
+            {editing && (
+              <Link
+                href="/discovery/guided"
+                className="px-4 py-2 font-medium text-slate-700 underline underline-offset-4 hover:text-slate-950 dark:text-slate-300 dark:hover:text-white"
+              >
+                Cancel
+              </Link>
+            )}
           </div>
         </form>
       )}

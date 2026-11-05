@@ -1,4 +1,7 @@
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type Prisma } from "@prisma/client";
+
+/** The client, or a transaction, so repository functions can join a caller's transaction. */
+export type Db = PrismaClient | Prisma.TransactionClient;
 
 // Reuse one client across hot reloads in development.
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };

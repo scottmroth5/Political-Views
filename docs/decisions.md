@@ -175,3 +175,24 @@ the configured PostHog origin. Disclosed on the privacy page.
 `src/middleware.ts` (Node runtime) sets `script-src 'self' 'nonce-…' 'strict-dynamic'`; styles
 allow `'unsafe-inline'` (Tailwind/Next inline styles). Playwright fails on any console error, which
 catches CSP breakage. HSTS (2 years, includeSubDomains, no preload) is sent by production builds.
+
+## D-023 — Suggested beliefs from guided answers, without AI (2026-11-05)
+
+Each selected choice becomes one SUGGESTED belief whose position is the choice's own wording; skips,
+"not sure" and free text yield none, so nothing is inferred beyond what the user picked. The belief
+links to the response through `BeliefEvidence`, which records the choice
+(`@@unique([responseId, choiceValue])`).
+
+- **Ownership:** SUGGESTED beliefs belong to the system and are re-derived in the same transaction
+  as every answer save (added, reworded, re-rated from the answer's importance, or removed).
+  CONFIRMED and REJECTED beliefs belong to the user and are never changed by the system. A rejected
+  choice is not suggested again; a confirmed belief whose choice leaves the answer is flagged
+  (`sourceChanged`) for the user to keep, reword or reject (PRD: no silent overwrite).
+- **User changes** (`PATCH /api/beliefs/:id`) carry the version the user saw (409 when stale) and
+  write a `BeliefRevision` (actor USER). Rewording confirms. Importance and conviction can be set
+  only on confirmed beliefs, so system re-derivation never overwrites a user's rating.
+- **Preview** opens after 3 answered questions (PRD ~3–5) or once any belief is confirmed, and is
+  always labeled preliminary; issue areas with no answers are listed as not covered.
+- Answers saved before this change have no derived beliefs until they are saved again.
+- Conversation-mode extraction (M3) will add SUGGESTED beliefs with `choiceValue` null and an
+  `extractionConfidence`; the same ownership rules apply.

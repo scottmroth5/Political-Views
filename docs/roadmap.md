@@ -2,14 +2,14 @@
 
 Source spec: `Political_Views_App_Claude_Code_Implementation_PRD.docx` (§12).
 
-| Milestone               | Status                       | Scope                                                                                                                                                   |
-| ----------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M1 Foundation           | **Done**                     | Next.js/TS scaffold, Postgres + Prisma schema & migrations, Docker DB, CI, lint/format/typecheck/tests                                                  |
-| M2 Guided MVP           | **Partial (vertical slice)** | Anonymous session, onboarding with both modes, seeded taxonomy, guided answer flow (answer / not sure / skip / importance), resume, mode switch, delete |
-| M3 AI + Chat            | Not started                  | Provider-neutral AI adapter, schema-validated extraction, chat UI, fallback                                                                             |
-| M4 Adaptive + Switching | Not started                  | Ambiguity/priority/depth ranking, clarification caps, dedup across modes                                                                                |
-| M5 Profile              | Not started                  | Belief review (confirm/edit/reject), importance/conviction, early preview, coverage                                                                     |
-| M6 Beta hardening       | Not started                  | Security/privacy review, accessibility audit, deployment (AWS CDK), AI evals, runbook                                                                   |
+| Milestone               | Status                    | Scope                                                                                                                                                   |
+| ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 Foundation           | **Done**                  | Next.js/TS scaffold, Postgres + Prisma schema & migrations, Docker DB, CI, lint/format/typecheck/tests                                                  |
+| M2 Guided MVP           | **Done**                  | Anonymous session, onboarding with both modes, seeded taxonomy, guided answer flow (answer / not sure / skip / importance), resume, mode switch, delete |
+| M3 AI + Chat            | Not started               | Provider-neutral AI adapter, schema-validated extraction, chat UI, fallback                                                                             |
+| M4 Adaptive + Switching | Not started               | Ambiguity/priority/depth ranking, clarification caps, dedup across modes                                                                                |
+| M5 Profile              | **Partial (guided only)** | Belief review (confirm/edit/reject), importance/conviction, early preview, coverage                                                                     |
+| M6 Beta hardening       | Not started               | Security/privacy review, accessibility audit, deployment (AWS CDK), AI evals, runbook                                                                   |
 
 ## Next implementation tickets
 
@@ -89,3 +89,18 @@ Already done from the list above: 4 (Playwright smoke tests) and 5 (purge is sch
    questions can be marked REVIEWED.
 4. **M3 AI chat** (tickets 6–8): deferred, since a real provider costs money and needs approval of
    its data terms. The adapter and a fake provider can be built and tested for free first.
+
+## Done 2026-11-05
+
+- **Edit previous guided answers** (ticket 1): "Change" in the answer history reopens the question
+  pre-filled (`GET /api/questions/:id`).
+- **Profile from guided answers** (M5 without AI, D-023): suggested beliefs per selected choice;
+  `/profile` to confirm, reword, reject and rate; coverage and gaps; `GET /api/beliefs`,
+  `PATCH /api/beliefs/:id`, `GET /api/profile`. Unit, integration and Playwright tests.
+
+Next, in order:
+
+1. **Editorial review tooling** (ticket 16) and the review itself (tickets 2 and 12).
+2. **Portable JSON export** of the profile (PRD "Download portable JSON profile").
+3. **M4 selection signals:** use importance ratings and coverage gaps to rank the next question.
+4. **M3 AI chat** (tickets 6–8), adapter and fake provider first; no paid provider without approval.

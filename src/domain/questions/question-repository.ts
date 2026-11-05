@@ -35,3 +35,10 @@ export function findServableQuestion(
 export async function countActiveCategories(): Promise<number> {
   return prisma.issueCategory.count({ where: { active: true } });
 }
+
+export function listActiveCategories() {
+  return prisma.issueCategory.findMany({
+    where: { active: true },
+    select: { id: true, slug: true, label: true, displayOrder: true },
+  });
+}

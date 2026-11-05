@@ -10,7 +10,7 @@
 
 export const APP = "political_views";
 
-export const PAGES = ["welcome", "guided", "conversation", "privacy", "other"] as const;
+export const PAGES = ["welcome", "guided", "conversation", "profile", "privacy", "other"] as const;
 export type AnalyticsPage = (typeof PAGES)[number];
 
 type Rule = readonly [property: string, allowed: readonly string[]] | null;
@@ -21,6 +21,10 @@ const EVENTS: Record<string, Rule> = {
   discovery_started: ["mode", ["guided", "conversation"]],
   // How the user responded, never to what: no question, topic or choice is sent.
   question_responded: ["outcome", ["answered", "unsure", "skipped"]],
+  // That an earlier answer was changed; not which one, or to what.
+  answer_changed: null,
+  // What kind of review action, never which belief or its wording.
+  belief_reviewed: ["action", ["confirmed", "rejected", "edited", "rated"]],
   mode_switched: ["to", ["guided", "conversation"]],
   guided_finished: null,
   session_deleted: null,
@@ -60,6 +64,7 @@ export function pageFromPath(pathname: string): AnalyticsPage {
   if (pathname === "/") return "welcome";
   if (pathname === "/discovery/guided") return "guided";
   if (pathname === "/discovery/conversation") return "conversation";
+  if (pathname === "/profile") return "profile";
   if (pathname === "/privacy") return "privacy";
   return "other";
 }

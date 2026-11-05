@@ -1,7 +1,11 @@
 import { getEnv } from "@/lib/env";
-import { listGuidedResponseSummaries } from "@/domain/responses/response-repository";
+import {
+  findGuidedResponse,
+  listGuidedResponseSummaries,
+} from "@/domain/responses/response-repository";
 import {
   countActiveCategories,
+  findServableQuestion,
   listServableQuestions,
   type ServableQuestion,
 } from "./question-repository";
@@ -66,5 +70,40 @@ export async function getNextQuestion(
       categoriesTouched: responsesPerCategory.size,
       categoriesTotal,
     },
+  };
+}
+
+/** The session's earlier answer to a question, for pre-filling the edit form. */
+export interface ExistingAnswerDto {
+  outcome: "ANSWERED" | "SKIPPED" | "UNSURE";
+  choiceValues: string[];
+  text: string | null;
+  importance: number | null;
+}
+
+/**
+ * A servable question together with this session's answer to it (null if not answered yet), or
+ * null when the question is not available. Choices no longer offered (after a question edit) are
+ * dropped from the pre-fill.
+ */
+export async function getQuestionForEdit(
+  sessionId: string,
+  questionId: string,
+): Promise<{ question: QuestionDto; answer: ExistingAnswerDto | null } | null> {
+  const source = await findServableQuestion(questionId, getEnv().REQUIRE_REVIEWED_QUESTIONS);
+  if (!source) return null;
+  const question = toQuestionDto(source);
+  const response = await findGuidedResponse(sessionId, questionId);
+  const offered = new Set(question.choices.map((c) => c.value));
+  return {
+    question,
+    answer: response
+      ? {
+          outcome: response.outcome,
+          choiceValues: response.choiceValues.filter((v) => offered.has(v)),
+          text: response.text,
+          importance: response.importance,
+        }
+      : null,
   };
 }

@@ -187,9 +187,13 @@ model BeliefEvidence {
   responseId        String   @db.Uuid
   response          Response @relation(fields: [responseId], references: [id], onDelete: Cascade)
   supportingExcerpt String?
+  // Guided answers: the selected choice this belief was derived from. Null for conversation evidence.
+  choiceValue       String?
   createdAt         DateTime @default(now())
 
   @@unique([beliefId, responseId])
+  // One derived belief per selected choice (Postgres allows many NULLs here).
+  @@unique([responseId, choiceValue])
   @@index([responseId])
 }
 
