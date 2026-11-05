@@ -68,3 +68,24 @@ Repo-side deployment and security testing are in place (deployment-plan.md, Phas
     only (`--omit=dev`), which are clean via the `postcss` and `deepmerge-ts` overrides in
     package.json.
 22. **Next.js 16 upgrade** (removes the need for the postcss override; middleware becomes proxy).
+
+## Deployment on hold (2026-11-05)
+
+AWS deployment is paused to save cost; development and testing continue locally. Nothing in GitHub
+needs changing: the deploy job and the production ZAP scan stay skipped while `DEPLOY_ENABLED` is
+unset, and CI keeps running on every push. Tickets 15, 17 and 20 wait until deployment resumes.
+
+### Next functionality, in order
+
+Already done from the list above: 4 (Playwright smoke tests) and 5 (purge is scheduled by
+`deploy/setup-server.sh`).
+
+1. **Edit previous guided answers** (ticket 1): finishes M2.
+2. **Profile from guided answers (M5 without AI):** turn each answer into a draft belief
+   deterministically (no AI cost), then a profile page to confirm, edit or reject beliefs, set
+   importance, and see coverage by category. Uses the existing Belief, BeliefEvidence and
+   BeliefRevision tables.
+3. **Editorial review tooling** (ticket 16) and the review itself (tickets 2 and 12), so the
+   questions can be marked REVIEWED.
+4. **M3 AI chat** (tickets 6–8): deferred, since a real provider costs money and needs approval of
+   its data terms. The adapter and a fake provider can be built and tested for free first.
