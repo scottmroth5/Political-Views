@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 import { apiFetch, modePath } from "@/lib/api-client";
 
 type Mode = "GUIDED" | "CONVERSATION";
@@ -30,6 +31,7 @@ export function StartDiscovery({ hasSession }: { hasSession: boolean }) {
     setError(null);
     try {
       await apiFetch("/api/sessions", { method: "POST", body: { mode } });
+      track("discovery_started", { mode: mode === "GUIDED" ? "guided" : "conversation" });
       router.push(modePath(mode));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start. Please try again.");

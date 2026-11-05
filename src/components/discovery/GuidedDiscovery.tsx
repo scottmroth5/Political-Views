@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DiscoveryProgress, QuestionDto } from "@/domain/questions/question-types";
+import { track } from "@/lib/analytics";
 import { ApiError, apiFetch } from "@/lib/api-client";
 
 type Outcome = "ANSWERED" | "SKIPPED" | "UNSURE";
@@ -31,6 +32,7 @@ export function GuidedDiscovery() {
         "/api/questions/next",
       );
       setQuestion(data.question);
+      if (!data.question && data.progress.respondedQuestions > 0) track("guided_finished");
       setProgress(data.progress);
       setSelected([]);
       setExplanation("");
@@ -97,6 +99,7 @@ export function GuidedDiscovery() {
           importance: outcome === "SKIPPED" ? null : importance,
         },
       });
+      track("question_responded", { outcome: outcome.toLowerCase() });
       router.refresh(); // update the server-rendered answer list
       await loadNext();
     } catch (e) {

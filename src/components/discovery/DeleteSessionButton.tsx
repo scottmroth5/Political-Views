@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 import { apiFetch } from "@/lib/api-client";
 
 export function DeleteSessionButton() {
@@ -18,6 +19,7 @@ export function DeleteSessionButton() {
     setError(null);
     try {
       await apiFetch("/api/sessions/current", { method: "DELETE" });
+      track("session_deleted");
       router.replace("/?deleted=1");
       router.refresh();
     } catch (e) {

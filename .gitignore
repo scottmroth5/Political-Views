@@ -31,3 +31,11 @@ Thumbs.db
 
 # Office lock files
 ~$*
+
+# bundled production scripts, Playwright output
+dist-scripts/
+/blob-report/
+/playwright/.cache/
+
+# personal terms the pre-commit check blocks (never committed)
+.personal-terms

@@ -47,3 +47,17 @@ See [deployment-plan.md](deployment-plan.md) (Lightsail, automatic deploys). Exi
 npm audit, CodeQL gate, gitleaks + pre-commit hook, Playwright E2E with axe accessibility checks,
 ZAP full scan against the CI-run app, Trivy image/config scans, ShellCheck, post-deploy smoke tests,
 weekly ZAP passive scan of production, Dependabot, and monthly backup restore tests.
+
+## Deployment work done (2026-11-04)
+
+Repo-side deployment and security testing are in place (deployment-plan.md, Phase B). Remaining:
+
+15. **Run the server setup** (deployment-plan.md Phases C–E) and the first real deploy.
+16. **Editorial review tooling:** a way to mark questions REVIEWED in production (a reviewed-slugs
+    list in the seed, applied by `deploy.sh seed`), since production serves only REVIEWED ones.
+17. **Rate limiting** for session creation (app-level or Caddy), a launch gate.
+18. **ZAP coverage:** the CI scan spiders public pages; add authenticated/API scanning of the
+    session and response endpoints.
+19. **Image pins updated by hand:** postgres and caddy in deploy/compose.yml and aws-cli in
+    backup.sh (Dependabot covers npm, Actions and the Dockerfile base image).
+20. **Runbook** (deploy, roll back, restore, rotate, incident response, data deletion requests).

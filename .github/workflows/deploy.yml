@@ -1,0 +1,196 @@
+# Builds the server image and deploys it to the Lightsail server (docs/deployment-plan.md).
+#
+# Automatic: after every CI job passes on a push to main, build the image from that exact commit,
+# scan it with Trivy (a fixable high or critical finding stops it), publish it to GHCR
+# (ghcr.io/scottmroth5/political-views, tags sha-<commit> and latest), deploy it over SSH, then
+# smoke-test production; a failed smoke test rolls back to the previous image.
+# Manual (Actions > Deploy > Run workflow): deploy any published tag, or roll back.
+# Weekly security rebuild (Mondays 13:00 UTC, after Dependabot): checks, then a fresh build of main
+# with the newest base images, scanned and deployed the same way.
+#
+# Stays off until the server exists: set the repository variable DEPLOY_ENABLED=true once these
+# repository secrets exist:
+#   DEPLOY_HOST          the server's static IP
+#   DEPLOY_USER          deploy
+#   DEPLOY_SSH_KEY       private half of the deploy key (its authorized_keys line forces deploy.sh)
+#   DEPLOY_KNOWN_HOSTS   ssh-keyscan -t ed25519 <static-ip>, so GitHub never trusts an impostor
+# GitHub holds nothing else: the app's secrets and data stay on the server. The image holds code
+# only, so the GHCR package is public and the server pulls it without signing in.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: "0 13 * * 1"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: deploy a tag, or roll back to the previous good image
+        type: choice
+        options: [deploy, rollback]
+        default: deploy
+      tag:
+        description: image tag to deploy (e.g. sha-1a2b3c4); empty builds and deploys the current main
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  PRODUCTION_URL: ${{ vars.PRODUCTION_URL || 'https://views.scottmroth.com' }}
+
+jobs:
+  # The weekly rebuild has no CI run before it, so it runs the main checks here.
+  checks:
+    name: Weekly checks
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run check:secrets -- --all
+      - run: npm test
+
+  image:
+    name: Build, scan and publish image
+    needs: checks
+    if: >-
+      always() && (
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push') ||
+      (github.event_name == 'schedule' && needs.checks.result == 'success') ||
+      (github.event_name == 'workflow_dispatch' && inputs.action == 'deploy' && inputs.tag == ''))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.names.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The exact commit CI tested, not whatever main is now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - id: names
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          owner="$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]')"
+          echo "image=ghcr.io/${owner}/political-views" >> "$GITHUB_OUTPUT"
+          # A weekly rebuild of an unchanged commit gets its own tag, so the previous image stays to roll back to.
+          if [ "$EVENT" = "schedule" ]; then echo "tag=sha-${SHA::7}-$(date -u +%Y%m%d)" >> "$GITHUB_OUTPUT"; else echo "tag=sha-${SHA::7}" >> "$GITHUB_OUTPUT"; fi
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Built into the runner first, so the scan can stop a vulnerable image before it is published.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          pull: true
+          load: true
+          push: false
+          tags: ${{ steps.names.outputs.image }}:${{ steps.names.outputs.tag }}
+          cache-from: type=gha
+      - name: Scan the image (Trivy)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.names.outputs.image }}:${{ steps.names.outputs.tag }}
+          scan-type: image
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          trivyignores: .trivyignore
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.image }}:${{ steps.names.outputs.tag }}
+            ${{ steps.names.outputs.image }}:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha || github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to production
+    needs: image
+    if: >-
+      always() && vars.DEPLOY_ENABLED == 'true' &&
+      (needs.image.result == 'success' || (needs.image.result == 'skipped' && github.event_name == 'workflow_dispatch'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Choose what to run
+        id: cmd
+        env:
+          ACTION: ${{ inputs.action }}
+          INPUT_TAG: ${{ inputs.tag }}
+          BUILT_TAG: ${{ needs.image.outputs.tag }}
+        run: |
+          if [ "$ACTION" = "rollback" ]; then cmd="rollback"
+          else
+            tag="${INPUT_TAG:-$BUILT_TAG}"
+            [[ "$tag" =~ ^sha-[0-9a-f]{7}(-[0-9]{8})?$ ]] || { echo "Bad tag: $tag" >&2; exit 1; }
+            cmd="deploy $tag"
+          fi
+          echo "command=$cmd" >> "$GITHUB_OUTPUT"
+          echo "Running: $cmd"
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts && chmod 644 ~/.ssh/known_hosts
+      - name: Run on the server
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          CMD: ${{ steps.cmd.outputs.command }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" "$CMD"
+      - name: Smoke test production
+        id: smoke
+        run: |
+          curl -sf --retry 10 --retry-delay 6 --retry-all-errors "$PRODUCTION_URL/api/health"
+          headers=$(curl -sfI "$PRODUCTION_URL/")
+          echo "$headers" | grep -qi '^strict-transport-security:' || { echo "HSTS missing" >&2; exit 1; }
+          echo "$headers" | grep -qi "^content-security-policy:.*strict-dynamic" || { echo "CSP missing" >&2; exit 1; }
+          curl -s -o /dev/null -w '%{http_code}' "http://${PRODUCTION_URL#https://}/" | grep -q '^30[18]$' \
+            || { echo "HTTP does not redirect to HTTPS" >&2; exit 1; }
+          echo "Smoke test passed"
+      - name: Roll back after a failed smoke test
+        if: failure() && steps.smoke.outcome == 'failure' && startsWith(steps.cmd.outputs.command, 'deploy ')
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" rollback
+      - name: Remove the key
+        if: always()
+        run: rm -f ~/.ssh/deploy_key

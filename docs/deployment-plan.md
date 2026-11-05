@@ -40,7 +40,7 @@ Browser ──TLS 1.2/1.3 (Let's Encrypt)──▶ Lightsail server (Ubuntu 24.0
 | Data path / store                    | Encryption                                                                                                                                                                                                 |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Browser → server                     | TLS 1.2/1.3 via Caddy; HSTS header from the app                                                                                                                                                            |
-| Caddy → app                          | Stays inside the one server on the private Docker network and is never on a physical network. Caddy also forwards over TLS (`tls internal`) so even this hop is encrypted                                  |
+| Caddy → app                          | Loopback only: Caddy shares the app container's network namespace and connects to 127.0.0.1:3000, so this hop never crosses any network (not even the Docker bridge). The app listens on loopback only     |
 | App → Postgres                       | TLS required: Postgres runs with `ssl=on` and `hostssl`-only `pg_hba.conf`, certificate from a small CA generated at setup; app connects with `sslmode=verify-full`                                        |
 | Server disk (database files, `.env`) | Lightsail encrypts instance disks and snapshots at rest (AWS-managed keys)                                                                                                                                 |
 | Backups                              | Encrypted on the server with age before upload (only your private key can decrypt them, so a compromised server can't read old backups); the bucket is also encrypted at rest and accessed over HTTPS only |
@@ -153,27 +153,25 @@ gives you the static IP:
 7. Only then start the server stack (Phase E). Caddy requests the certificate on first start and
    needs the name to resolve and ports 80/443 open.
 
-### Phase B — Repository work **(repo, no AWS cost)**
+### Phase B — Repository work **(done 2026-11-04)**
 
-Each item lands as its own pull request with tests:
-
-1. `Dockerfile`: multi-stage Node 22 slim, `next build` standalone output, non-root, no npm in the
-   runtime image, Prisma CLI available for migrations, `HEALTHCHECK`.
+1. `Dockerfile`: multi-stage Node 22 slim, standalone build, non-root, no npm in the runtime image,
+   Prisma CLI under `tools/` for migrations, bundled seed/purge scripts, `HEALTHCHECK`.
 2. `GET /api/health`: checks the DB connection, returns no data.
-3. Security headers: HSTS, a strict Content-Security-Policy, `frame-ancestors 'none'`.
-4. `deploy/`: `compose.yml` (caddy, app, db; hardened as in §1), `Caddyfile`, `postgres/` TLS config,
-   `setup-server.sh` (users, firewall, unattended upgrades, fail2ban, Docker, CA and DB certificates),
-   `deploy.sh` (forced-command deploy/rollback with backup and health checks), `backup.sh`
-   (`pg_dump | age` → bucket), `server.env.example`.
-5. Workflows:
-   - `ci.yml`: existing jobs plus npm audit, CodeQL gate, gitleaks, Playwright + axe, ZAP full scan
-     against the CI-run app, Trivy config scan, ShellCheck.
-   - `deploy.yml`: automatic after CI success on `main`, plus weekly rebuild and manual
-     deploy/rollback (§3).
-   - `zap-production.yml`: weekly passive baseline against `PRODUCTION_URL`.
-   - `dependabot.yml` + `dependabot-automerge.yml`: as in Health-Review.
-   - All third-party actions pinned to commit SHAs.
-6. `.githooks/pre-commit` running gitleaks, enabled by `npm install`.
+3. Security headers: HSTS (production), per-request nonce Content-Security-Policy
+   (`src/middleware.ts`), `frame-ancestors 'none'`, COOP, Permissions-Policy.
+4. `deploy/`: `compose.yml`, `Caddyfile`, `postgres/` (TLS-only `pg_hba.conf`, app role),
+   `setup-server.sh`, `deploy.sh`, `backup.sh`, `server.env.example`.
+5. Workflows: `ci.yml` (all checks in §2), `deploy.yml` (§3), `zap-production.yml`,
+   `dependabot.yml` + `dependabot-automerge.yml`. Third-party actions pinned to commit SHAs.
+6. `.githooks/pre-commit` → `scripts/check-secrets.mjs` (enabled by `npm install`), plus your
+   git-ignored `.personal-terms` list.
+
+Verified locally before pushing: the real `compose.yml` stack with the built image (HTTPS via Caddy,
+HTTP redirect, HSTS/CSP, app port unreachable, Postgres refusing non-TLS and superuser network
+logins, app connections on TLS 1.3, certificate and hostname verification enforced, migrations,
+seeding, purge, age-encrypted dump), Playwright + axe, ShellCheck and Trivy config. Not yet run on a
+real server: `setup-server.sh`, `deploy.sh` and `backup.sh` end to end.
 
 ### Phase C — GitHub settings **(you, about 10 minutes)**
 
@@ -202,23 +200,37 @@ Each item lands as its own pull request with tests:
 4. **DNS:** add the Porkbun `A` record for `views` → the static IP (Phase A).
 5. **Object storage:** create a Lightsail bucket (5 GB plan, private), create an access key scoped
    to that bucket only, and keep it for the server's `.env`.
-6. **On the server** (Lightsail browser SSH): run `deploy/setup-server.sh`. It creates the
-   `deploy` user, hardening, Docker, the Postgres CA and certificates, and
-   `/opt/political-views/`. Then fill in `.env` from `server.env.example`: DB password (generated),
-   bucket key, and the **age public key**.
-7. **On your PC:** `age-keygen -o political-views-backup.key`. Put the private key in your password
-   manager and delete the file. Only the public key (`age1…`) goes to the server.
-8. **Deploy key:** `ssh-keygen -t ed25519 -f pv-deploy -N ""`. Add the public key to the server with
-   the forced command; put the private key into GitHub `DEPLOY_SSH_KEY`; set `DEPLOY_KNOWN_HOSTS`
-   from `ssh-keyscan <static-ip>`. Delete the local private key file.
+6. **Keys on your PC** (PowerShell; `age` from `winget install FiloSottile.age`):
+   - Backup key: `age-keygen -o pv-backup.key`. Copy the whole file into your password manager,
+     note the `public key: age1…` line, then delete the file.
+   - Deploy key: `ssh-keygen -t ed25519 -f pv-deploy -N '""' -C github-deploy`. Keep both files
+     for step 7 and Phase C.
+7. **On the server** (Lightsail → instance → Connect using SSH):
+   ```bash
+   git clone https://github.com/scottmroth5/Political-Views.git ~/pv
+   sudo bash ~/pv/deploy/setup-server.sh "<contents of pv-deploy.pub>"
+   sudo nano /opt/political-views/.env   # AGE_RECIPIENT=age1…, BACKUP_* from step 5, ANALYTICS_TOKEN (Phase H)
+   ```
+   The script installs Docker, fail2ban and automatic updates, hardens SSH, creates the `deploy`
+   user (whose key can only run `deploy.sh`), the database CA and certificates, `.env` with generated
+   database passwords, and the nightly backup and purge jobs.
+8. **GitHub secrets** (Phase C step 5): `DEPLOY_HOST` = static IP, `DEPLOY_USER` = `deploy`,
+   `DEPLOY_SSH_KEY` = contents of `pv-deploy`, `DEPLOY_KNOWN_HOSTS` = output of
+   `ssh-keyscan -t ed25519 <static-ip>`. Then delete `pv-deploy` and `pv-deploy.pub` from your PC.
 
 ### Phase E — First deployment
 
-1. Set `DEPLOY_ENABLED=true` and push to `main` (or run Deploy manually).
-2. Seed questions on the server only **after** they are marked REVIEWED (Phase F), with
-   `REQUIRE_REVIEWED_QUESTIONS=true`: `./deploy.sh seed`.
-3. Verify: SSL Labs grade A, `curl -I` shows HSTS/CSP, the backup appears in the bucket and decrypts
-   on your PC, and Postgres rejects a non-TLS connection.
+1. Set the variable `DEPLOY_ENABLED=true`, then run **Actions → Deploy → Run workflow** (or push to
+   `main`). It builds, scans, publishes, deploys and smoke-tests.
+2. Set the GHCR package `political-views` to **Public** (its package settings) if the first pull
+   failed for lack of access, then run Deploy again.
+3. Seed questions (server SSH): `sudo -u deploy /opt/political-views/deploy.sh seed`. With
+   `REQUIRE_REVIEWED_QUESTIONS=true` only REVIEWED questions are shown, so the site shows none until
+   the editorial review (Phase F) marks them; that's intended.
+4. Test a backup: `sudo -u deploy /opt/political-views/backup.sh`, then download it from the
+   bucket and decrypt it on your PC with `age -d -i <key from password manager> file.dump.age`.
+5. Verify: SSL Labs grade A for `views.scottmroth.com`; `curl -I https://views.scottmroth.com`
+   shows HSTS and CSP.
 
 ### Phase F — Launch gates (from the PRD) before sharing the URL
 
@@ -230,6 +242,29 @@ Each item lands as its own pull request with tests:
 - [ ] Daily `sessions:purge` confirmed in the logs
 - [ ] Runbook written: deploy, roll back, restore, rotate secrets, incident response, delete a
       user's data on request
+
+### Phase H — PostHog usage counts (optional) **(you, about 10 minutes)**
+
+The app sends a handful of allowlisted counts with no SDK (`src/lib/analytics.ts`): `page_viewed`
+(welcome / guided / conversation / privacy / other), `discovery_started` (mode),
+`question_responded` (answered / unsure / skipped: never which question, topic or choice),
+`mode_switched`, `guided_finished`, `session_deleted`. No cookies, no storage, a random id per page
+load, no person profiles; Global Privacy Control or Do Not Track sends nothing. Unit tests enforce
+the allowlist. Without a token nothing is sent.
+
+1. Sign in at posthog.com (US Cloud) → **New project** named `Political Views`.
+2. **Project settings → General:** turn on **Discard client IP data**. Set the timezone.
+3. **Project settings:** turn **off** session replay, autocapture, heatmaps, web vitals, surveys
+   and exception autocapture (the app doesn't use an SDK, but this keeps the project clean if one
+   is ever added by mistake). Set **data retention** to the shortest plan option.
+4. **Project settings → Project API key:** copy the **project** token (`phc_…`). Never use a
+   personal API key (`phx_…`).
+5. On the server: add `ANALYTICS_TOKEN=phc_…` (and keep `ANALYTICS_HOST=https://us.i.posthog.com`)
+   to `/opt/political-views/.env`, then redeploy (Actions → Deploy → Run workflow) so the app picks
+   it up. The CSP automatically allows only that one PostHog origin.
+6. Check: open the site, then **PostHog → Activity**: you should see `page_viewed` events with
+   `app = political_views` and no person profiles.
+7. If you later add PostHog to another app, use a separate project.
 
 ### Phase G — Ongoing
 

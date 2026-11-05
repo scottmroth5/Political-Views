@@ -39,22 +39,36 @@ On Windows PowerShell use `Copy-Item .env.example .env` instead of `cp`.
 
 ## Commands
 
-| Command                           | What it does                                                     |
-| --------------------------------- | ---------------------------------------------------------------- |
-| `npm run dev`                     | Development server                                               |
-| `npm run build` / `npm start`     | Production build / serve                                         |
-| `npm run lint`                    | ESLint (bans `console` outside the redacting logger)             |
-| `npm run typecheck`               | `tsc --noEmit`                                                   |
-| `npm run format` / `format:check` | Prettier                                                         |
-| `npm test`                        | Unit tests (no database)                                         |
-| `npm run test:integration`        | API + database tests against `TEST_DATABASE_URL` (needs `db:up`) |
-| `npm run check`                   | format check + lint + typecheck + unit tests                     |
-| `npm run db:migrate`              | Create/apply a migration after editing `prisma/schema.prisma`    |
-| `npm run db:reset`                | Drop, re-migrate and re-seed the dev database                    |
-| `npm run sessions:purge`          | Delete expired anonymous sessions and their data                 |
+| Command                           | What it does                                                                                                                |
+| --------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                     | Development server                                                                                                          |
+| `npm run build` / `npm start`     | Production build / serve                                                                                                    |
+| `npm run lint`                    | ESLint (bans `console` outside the redacting logger)                                                                        |
+| `npm run typecheck`               | `tsc --noEmit`                                                                                                              |
+| `npm run format` / `format:check` | Prettier                                                                                                                    |
+| `npm test`                        | Unit tests (no database)                                                                                                    |
+| `npm run test:integration`        | API + database tests against `TEST_DATABASE_URL` (needs `db:up`)                                                            |
+| `npm run check`                   | format check + lint + typecheck + unit tests                                                                                |
+| `npm run db:migrate`              | Create/apply a migration after editing `prisma/schema.prisma`                                                               |
+| `npm run db:reset`                | Drop, re-migrate and re-seed the dev database                                                                               |
+| `npm run sessions:purge`          | Delete expired anonymous sessions and their data                                                                            |
+| `npm run test:e2e`                | Playwright + axe on the production build (`npm run build` first; needs `db:up`; one-time `npx playwright install chromium`) |
+| `npm run check:secrets`           | Secret/personal-data check of staged files (runs as the pre-commit hook; `-- --all` for every file)                         |
 
-CI (`.github/workflows/ci.yml`) runs format check, lint, typecheck, unit and integration tests,
-and a production build against a Postgres service container.
+CI (`.github/workflows/ci.yml`) runs npm audit, the secret check, format, lint, typecheck, unit
+and integration tests, a production build, Playwright end-to-end with axe accessibility checks, an
+OWASP ZAP active scan of the CI-run app, gitleaks over the full history, Trivy config scan,
+ShellCheck and CodeQL. A push to `main` that passes deploys automatically to
+https://views.scottmroth.com (`.github/workflows/deploy.yml`).
+
+**Pre-commit hook:** `npm install` turns it on. To block your own personal terms (e.g. a work email)
+too, list them one per line in `.personal-terms` (git-ignored, never committed).
+
+## Deployment
+
+Production is one AWS Lightsail server running `deploy/compose.yml` (Caddy HTTPS, the app, and
+Postgres with TLS required), with age-encrypted nightly backups. Setup, encryption details, DNS
+(Porkbun), PostHog and launch gates: [`docs/deployment-plan.md`](docs/deployment-plan.md).
 
 ## Project layout
 
@@ -62,11 +76,15 @@ and a production build against a Postgres service container.
 src/app/            routes: welcome, /discovery/{guided,conversation}, /privacy, /api/*
 src/components/     onboarding/, discovery/
 src/domain/         sessions/, questions/, responses/ — business logic + Prisma repositories
-src/lib/            env, db client, http helpers (CSRF/body limits), cookies, redacting logger
+src/lib/            env, db client, http helpers (CSRF/body limits), cookies, redacting logger,
+                    allowlisted analytics
+src/middleware.ts   per-request nonce Content-Security-Policy
 prisma/             schema, migrations, seed data (seed-data.ts) and idempotent seeder
 tests/unit/         pure logic
 tests/integration/  route handlers against a real test database
-docs/               decisions.md, roadmap.md
+tests/e2e/          Playwright + axe against the production build
+deploy/             production compose stack, Caddyfile, Postgres TLS config, server scripts
+docs/               decisions.md, roadmap.md, deployment-plan.md
 ```
 
 ## API (implemented)

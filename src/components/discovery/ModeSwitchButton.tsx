@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { track } from "@/lib/analytics";
 import { apiFetch, modePath } from "@/lib/api-client";
 
 /** Switches discovery mode server-side; all answers stay with the session (US-03). */
@@ -15,6 +16,7 @@ export function ModeSwitchButton({ to, label }: { to: "GUIDED" | "CONVERSATION";
     setError(null);
     try {
       await apiFetch("/api/sessions/current", { method: "PATCH", body: { mode: to } });
+      track("mode_switched", { to: to === "GUIDED" ? "guided" : "conversation" });
       router.push(modePath(to));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not switch. Please try again.");

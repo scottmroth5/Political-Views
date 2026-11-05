@@ -1,3 +1,14 @@
+# Checks on every push to main and every pull request. Synthetic data only, no secrets. A push to
+# main that passes every job here starts deploy.yml (automatic production deploy).
+#
+#   check     audit, secret/personal-data check, format, lint, types, unit + integration tests, build
+#   e2e       Playwright end-to-end + axe accessibility on the production build, then an OWASP ZAP
+#             full (active) scan of that same CI-run app (never production); high risk fails
+#   gitleaks  secret scan of the full git history
+#   config    Trivy misconfiguration scan (Dockerfile, IaC) and ShellCheck of the server scripts
+#   codeql    CodeQL security-extended; open high/critical alerts fail (accepted ones listed in
+#             .github/codeql-accepted.txt)
+#   deps      dependency review on pull requests (new vulnerable or risky dependencies)
 name: CI
 
 on:
@@ -8,9 +19,16 @@ on:
 permissions:
   contents: read
 
+env:
+  NEXT_TELEMETRY_DISABLED: "1"
+  TEST_DATABASE_URL: postgresql://political_views:ci_password@localhost:5432/political_views_test?schema=public
+  DATABASE_URL: postgresql://political_views:ci_password@localhost:5432/political_views_test?schema=public
+
 jobs:
   check:
+    name: Tests and checks
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16-alpine
@@ -22,20 +40,165 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U political_views"
           --health-interval 2s --health-timeout 5s --health-retries 20
-    env:
-      DATABASE_URL: postgresql://political_views:ci_password@localhost:5432/political_views_test?schema=public
-      TEST_DATABASE_URL: postgresql://political_views:ci_password@localhost:5432/political_views_test?schema=public
-      NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      # Known vulnerabilities in what the app ships (dev tools excluded); high or critical fails.
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npm run check:secrets -- --all
       - run: npm run format:check
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:integration
       - run: npm run build
+
+  e2e:
+    name: End-to-end, accessibility and ZAP scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: political_views
+          POSTGRES_PASSWORD: ci_password
+          POSTGRES_DB: political_views_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U political_views"
+          --health-interval 2s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - name: Keep the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+      # ZAP active scan of this CI-run copy of the app (synthetic data; production is never attacked).
+      - name: Start the app for ZAP
+        run: |
+          node scripts/prepare-standalone.mjs
+          NODE_ENV=production PORT=3200 HOSTNAME=127.0.0.1 REQUIRE_REVIEWED_QUESTIONS=false \
+            nohup node .next/standalone/server.js > app.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:3200/api/health && exit 0; sleep 2; done
+          cat app.log; exit 1
+      - name: ZAP full scan
+        run: |
+          mkdir -p zap && chmod 777 zap
+          docker run --rm --network host -v "$PWD/zap:/zap/wrk:rw" zaproxy/zap-stable:20261016 \
+            zap-full-scan.py -t http://127.0.0.1:3200 -m 2 -T 20 -J zap.json -r zap.html -I || true
+          test -s zap/zap.json || { echo "ZAP produced no report" >&2; exit 1; }
+          high=$(jq '[.site[].alerts[] | select(.riskcode == "3")] | length' zap/zap.json)
+          jq -r '.site[].alerts[] | "\(.riskdesc)\t\(.alert)"' zap/zap.json | sort -u
+          echo "high-risk alerts: $high"
+          [ "$high" -eq 0 ] || { echo "Fix the high-risk ZAP alerts above." >&2; exit 1; }
+      - name: Keep the ZAP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap/
+          retention-days: 14
+
+  gitleaks:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: |
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 \
+            git /repo --redact --verbose --exit-code 1
+
+  config:
+    name: Config scan and ShellCheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Trivy misconfiguration scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          trivyignores: .trivyignore
+      - name: ShellCheck
+        run: shellcheck deploy/*.sh deploy/postgres/*.sh .githooks/pre-commit
+
+  codeql:
+    name: CodeQL (security)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      - uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript
+      # Fail on any open high or critical alert for this ref, so a deploy never ships one.
+      - name: No open high or critical alerts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF: ${{ github.event_name == 'pull_request' && format('refs/pull/{0}/merge', github.event.pull_request.number) || github.ref }}
+        run: |
+          total=0
+          for sev in critical high; do
+            list=$(gh api "repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&severity=${sev}&ref=${REF}&per_page=100" \
+              --jq '.[] | "\(.rule.id) \(.most_recent_instance.location.path):\(.most_recent_instance.location.start_line) \(.rule.description)"')
+            # Reviewed, accepted alerts (.github/codeql-accepted.txt: rule and file) are listed but do not fail.
+            list=$(printf '%s\n' "$list" | while read -r rule loc rest; do
+              [ -z "$rule" ] && continue
+              if grep -v '^#' .github/codeql-accepted.txt | awk 'NF { print $1 " " $2 }' | grep -qxF "$rule ${loc%%:*}"; then
+                echo "accepted: $rule $loc" >&2
+              else
+                echo "$rule $loc $rest"
+              fi
+            done)
+            n=$(printf '%s' "$list" | grep -c . || true)
+            echo "${sev}: ${n}"
+            if [ -n "$list" ]; then printf '%s\n' "$list"; fi
+            total=$((total + n))
+          done
+          if [ "$total" -gt 0 ]; then echo "Fix the CodeQL alerts above (Security > Code scanning) before deploying." >&2; exit 1; fi
+
+  deps:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure

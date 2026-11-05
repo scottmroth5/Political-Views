@@ -1,0 +1,119 @@
+# Production stack on the Lightsail server (docs/deployment-plan.md). Lives at
+# /opt/political-views/compose.yml next to .env, Caddyfile, certs/ and postgres/.
+# deploy.sh sets IMAGE_TAG; by hand: IMAGE_TAG=<tag> docker compose up -d
+#
+# Only the app service publishes ports (80/443), and only Caddy listens on them: Caddy shares the
+# app container's network namespace, so Caddy -> app is loopback (127.0.0.1:3000) and never crosses
+# any network. The app reaches Postgres over the private backend network with TLS required
+# (sslaccept=strict against our own CA). Postgres is not reachable from outside Docker.
+
+name: political-views
+
+x-hardening: &hardening
+  restart: unless-stopped
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: local
+    options:
+      max-size: 10m
+      max-file: "5"
+
+services:
+  db:
+    <<: *hardening
+    image: postgres:16.15-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: political_views
+      # Used once, by postgres/init-app-role.sh, to create the app's own (non-superuser) role.
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD in .env}
+    command:
+      - postgres
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/certs/server.crt
+      - -c
+      - ssl_key_file=/certs/server.key
+      - -c
+      - ssl_min_protocol_version=TLSv1.2
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - password_encryption=scram-sha-256
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./certs/server.crt:/certs/server.crt:ro
+      - ./certs/server.key:/certs/server.key:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./postgres/init-app-role.sh:/docker-entrypoint-initdb.d/10-app-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d political_views"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    shm_size: 128m
+    mem_limit: 512m
+    networks: [backend]
+
+  app:
+    <<: *hardening
+    image: ${IMAGE:-ghcr.io/scottmroth5/political-views}:${IMAGE_TAG:-latest}
+    # Only what the app needs; the Postgres superuser password and backup keys never reach it.
+    environment:
+      DATABASE_URL: postgresql://app:${APP_DB_PASSWORD}@db:5432/political_views?sslmode=require&sslcert=/certs/ca.crt&sslaccept=strict
+      SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      REQUIRE_REVIEWED_QUESTIONS: ${REQUIRE_REVIEWED_QUESTIONS:-true}
+      ANALYTICS_TOKEN: ${ANALYTICS_TOKEN:-}
+      ANALYTICS_HOST: ${ANALYTICS_HOST:-https://us.i.posthog.com}
+      HOSTNAME: 127.0.0.1
+      PORT: "3000"
+    volumes:
+      - ./certs/ca.crt:/certs/ca.crt:ro
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTPS_PORT:-443}:443/udp"
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m
+      - /app/.next/cache:size=64m,uid=1000,gid=1000,mode=0700
+    cap_drop: [ALL]
+    mem_limit: 768m
+    pids_limit: 200
+    depends_on:
+      db:
+        condition: service_healthy
+    networks: [backend]
+
+  caddy:
+    <<: *hardening
+    image: caddy:2.11.6-alpine
+    network_mode: service:app
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-views.scottmroth.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    mem_limit: 128m
+    depends_on:
+      - app
+
+networks:
+  backend: {}
+
+volumes:
+  # Database files on the server's encrypted disk. Survives every deploy.
+  pgdata: {}
+  # Caddy's certificates, so restarts never ask Let's Encrypt for a new one.
+  caddy_data: {}
+  caddy_config: {}

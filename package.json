@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:scripts": "esbuild prisma/seed.ts scripts/purge-expired-sessions.ts --bundle --platform=node --target=node22 --format=cjs --outbase=. --outdir=dist-scripts --external:@prisma/client --log-level=warning",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -17,6 +18,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "check:secrets": "node scripts/check-secrets.mjs",
     "check": "npm run format:check && npm run lint && npm run typecheck && npm run test",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down",
@@ -25,7 +28,8 @@
     "db:seed": "prisma db seed",
     "db:reset": "prisma migrate reset --force",
     "sessions:purge": "tsx scripts/purge-expired-sessions.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "prepare": "node scripts/install-hooks.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -38,11 +42,14 @@
     "zod": "4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@eslint/eslintrc": "3.3.7",
+    "@playwright/test": "1.64.1",
     "@tailwindcss/postcss": "4.3.4",
     "@types/node": "22.20.5",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "eslint-config-next": "15.5.29",
     "prettier": "3.9.10",

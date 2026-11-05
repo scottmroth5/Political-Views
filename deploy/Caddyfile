@@ -1,0 +1,15 @@
+# HTTPS for the site. Caddy gets a free Let's Encrypt certificate on first start (the DNS A record
+# must already point at the server and ports 80/443 must be open) and renews it on its own. Plain
+# http is redirected to https. The app sets its own security headers (HSTS, CSP).
+{
+	# No admin API: nothing on the shared loopback can reconfigure Caddy.
+	admin off
+}
+
+{$SITE_ADDRESS} {
+	encode zstd gzip
+	# Loopback only: Caddy shares the app container's network namespace (compose.yml).
+	reverse_proxy 127.0.0.1:3000
+	header -Server
+	# No access log: request lines are not worth keeping.
+}

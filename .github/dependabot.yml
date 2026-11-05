@@ -1,0 +1,32 @@
+# Weekly security and version updates (Mondays, early): npm packages, the GitHub Actions the
+# workflows use, and the Dockerfile's base image. Patch-level updates merge on their own once CI
+# passes (dependabot-automerge.yml) and deploy automatically; minor and major updates wait for the
+# owner. The images pinned in deploy/compose.yml (postgres, caddy) and backup.sh (aws-cli) are
+# updated by hand (docs/roadmap.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+    open-pull-requests-limit: 10
+    groups:
+      patches:
+        update-types: [patch]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: America/New_York

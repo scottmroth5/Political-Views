@@ -1,0 +1,1 @@
+# Reviewed CodeQL alerts accepted on purpose: one per line, "<rule-id> <path>  # why, until when". Empty: none.

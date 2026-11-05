@@ -1,0 +1,26 @@
+# Code only goes into the image: no secrets, data, docs, tests or local build output.
+.git
+.github
+.githooks
+.next
+node_modules
+dist-scripts
+coverage
+test-results
+playwright-report
+blob-report
+tests
+docs
+deploy
+docker
+*.docx
+*.md
+.env
+.env.*
+.personal-terms
+**/*.pem
+**/*.key
+**/*.dump
+**/*.age
+Dockerfile
+.dockerignore

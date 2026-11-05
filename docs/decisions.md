@@ -144,3 +144,34 @@ Total seeded questions: 37. DRAFT pending editorial review.
 One single-choice Government & Democracy question on presidential election method: national
 popular vote / keep the Electoral College but change how states award electors / keep as is. The
 middle option covers reformers who do not favor abolition. Total seeded questions: 38. DRAFT.
+
+## D-020 — Production on one Lightsail server (2026-11-04)
+
+Owner's choice: cheap and simple now (≈ $14–16/month), the Health-Review / Job-Agent pattern, at
+https://views.scottmroth.com (Porkbun DNS, us-east-2), deploying automatically after CI passes.
+Details in deployment-plan.md. Choices that differ from the other apps:
+
+- Caddy shares the app container's network namespace, so Caddy → app is loopback and the app
+  listens on 127.0.0.1 only.
+- Postgres requires TLS (`hostnossl … reject`) with certificates from a CA generated on the
+  server; the app verifies the certificate and hostname (`sslaccept=strict`; tested). The app uses
+  its own non-superuser role; the superuser can log in only over the container's local socket.
+- Backups are encrypted with age to a public key, so the server cannot read its own backups.
+- `deploy.sh` is root-owned and forced by the deploy key's `authorized_keys` line; it takes a local
+  pre-deploy dump, migrates, health-checks and restores/rolls back on failure.
+- Seed and purge scripts are bundled with esbuild into the image (no tsx or npm at runtime); the
+  Prisma CLI lives in `tools/` only for migrations.
+
+## D-021 — Analytics without an SDK (2026-11-04)
+
+PostHog via one POST per event built from an allowlist (`src/lib/analytics.ts`), mirroring
+Health-Review's demo analytics: no answers, choices, question ids, topics, text, URLs or referrers;
+no cookies or storage; random id per page load; `$process_person_profile: false`; nothing sent under
+Global Privacy Control or Do Not Track, or without `ANALYTICS_TOKEN`. CSP `connect-src` adds only
+the configured PostHog origin. Disclosed on the privacy page.
+
+## D-022 — Per-request CSP with nonces (2026-11-04)
+
+`src/middleware.ts` (Node runtime) sets `script-src 'self' 'nonce-…' 'strict-dynamic'`; styles
+allow `'unsafe-inline'` (Tailwind/Next inline styles). Playwright fails on any console error, which
+catches CSP breakage. HSTS (2 years, includeSubDomains, no preload) is sent by production builds.

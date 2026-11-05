@@ -37,6 +37,20 @@ export default function PrivacyPage() {
         written to analytics tools or application logs.
       </p>
 
+      <h2 className="text-lg font-semibold">Usage counts</h2>
+      <p>
+        To understand how the site is used, it may count a few events with PostHog (posthog.com,
+        United States): which page was opened, that discovery was started, that a question was
+        answered, marked &ldquo;not sure&rdquo; or skipped, that the mode was switched, that the
+        guided questions were finished, and that a session was deleted. <strong>Never</strong> sent:
+        your answers or choices, which question or topic you were on, anything you type, the address
+        you came from, or anything that identifies you. No cookie is set for this, and each page
+        load gets a new random id, so visits are not linked to each other or to your session.
+        PostHog receives your network address with each request, as any website does, and is set not
+        to store it. If your browser sends Global Privacy Control or Do Not Track, nothing is sent.
+        Blocking it doesn&apos;t change how the site works.
+      </p>
+
       <h2 className="text-lg font-semibold">AI processing</h2>
       <p>
         This version does not send your answers to any AI provider. When AI-assisted features are

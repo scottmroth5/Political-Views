@@ -1,0 +1,3 @@
+#!/bin/sh
+# Blocks commits containing secrets or personal data (scripts/check-secrets.mjs). Enabled by npm install.
+exec node scripts/check-secrets.mjs
