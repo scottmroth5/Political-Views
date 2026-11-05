@@ -4,9 +4,9 @@ import { seedTaxonomy } from "./seed-taxonomy";
 const prisma = new PrismaClient();
 
 seedTaxonomy(prisma)
-  .then(({ categories, questions, reviewed }) => {
+  .then(({ categories, questionsAdded, questionsExisting }) => {
     console.log(
-      `Seeded ${categories} categories and ${questions} questions (${reviewed} editorially reviewed).`,
+      `Seeded ${categories} categories; added ${questionsAdded} questions (${questionsExisting} already present, left unchanged).`,
     );
   })
   .catch((error: unknown) => {

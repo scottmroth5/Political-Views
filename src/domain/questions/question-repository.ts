@@ -9,7 +9,7 @@ export type ServableQuestion = Prisma.QuestionGetPayload<{ include: typeof serva
 
 function servableWhere(requireReviewed: boolean): Prisma.QuestionWhereInput {
   return {
-    active: true,
+    archivedAt: null,
     ...(requireReviewed ? { editorialStatus: "REVIEWED" } : {}),
     topic: { active: true, category: { active: true } },
   };

@@ -30,7 +30,11 @@ export function AnswerHistory({
                 {a.categoryLabel} · {OUTCOME_LABEL[a.outcome]}
                 {a.importance !== null && ` · Importance ${a.importance}/5`}
               </p>
-              {a.questionId === editingQuestionId ? (
+              {!a.changeable ? (
+                <span className="shrink-0 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  Question retired
+                </span>
+              ) : a.questionId === editingQuestionId ? (
                 <span className="shrink-0 text-xs font-medium text-slate-500 dark:text-slate-400">
                   Changing above
                 </span>

@@ -110,7 +110,8 @@ chmod 644 /etc/cron.d/political-views
 
 say "Done. Next steps"
 cat <<EOF
-1. Fill in the backup settings (AGE_RECIPIENT, BACKUP_*) and, optionally, ANALYTICS_TOKEN:
+1. Fill in the backup settings (AGE_RECIPIENT, BACKUP_*), ADMIN_PASSWORD_HASH (npm run
+   admin:password on your PC) and, optionally, ANALYTICS_TOKEN:
      sudo nano $APP_DIR/.env
 2. Add this server's host key to GitHub as DEPLOY_KNOWN_HOSTS (run from your PC):
      ssh-keyscan -t ed25519 <static-ip>

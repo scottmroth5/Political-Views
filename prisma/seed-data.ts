@@ -1,10 +1,14 @@
 /**
  * Seed taxonomy (PRD §5): 12 categories, 2 foundational questions each.
  *
- * EDITORIAL STATUS: every question is DRAFT. Wording was drafted to be neutral,
+ * STARTING SET ONLY: seeding inserts these as DRAFT questions when their slug is
+ * missing, and never changes them afterwards. Questions are then managed (added,
+ * reviewed, copied, archived) in the admin pages; see docs/editorial-review.md.
+ *
+ * EDITORIAL STATUS: every question starts as DRAFT. Wording was drafted to be neutral,
  * non-leading and to span a range of reasonable positions, but it MUST be
  * reviewed by a human editor (ideally a politically diverse panel) before beta.
- * Set REQUIRE_REVIEWED_QUESTIONS=true in production once reviewed.
+ * Mark reviewed questions in /admin; production shows only REVIEWED questions.
  *
  * "Not sure" and "skip" are always offered by the UI, so they are not choices.
  * Choice order is not intended to imply a ranking; review this during editorial pass.

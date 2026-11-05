@@ -127,6 +127,8 @@ export interface GuidedAnswerSummary {
   choiceLabels: string[];
   text: string | null;
   importance: number | null;
+  /** False once the question is archived: the answer is kept but can no longer be changed. */
+  changeable: boolean;
 }
 
 export async function listGuidedAnswers(sessionId: string): Promise<GuidedAnswerSummary[]> {
@@ -145,6 +147,7 @@ export async function listGuidedAnswers(sessionId: string): Promise<GuidedAnswer
           .map((c) => c.label),
         text: r.text,
         importance: r.importance,
+        changeable: r.question.archivedAt === null,
       },
     ];
   });
