@@ -1,4 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
+import { hashAdminPassword } from "./src/domain/admin/admin-password";
+import { E2E_ADMIN_PASSWORD } from "./tests/e2e/admin-credentials";
 
 // End-to-end tests run the production build (`npm run build` first) against the disposable test
 // database, which global setup migrates and seeds. Never point TEST_DATABASE_URL at real data.
@@ -32,6 +34,7 @@ export default defineConfig({
       DATABASE_URL: testDatabaseUrl,
       REQUIRE_REVIEWED_QUESTIONS: "false",
       ANALYTICS_TOKEN: "",
+      ADMIN_PASSWORD_HASH: hashAdminPassword(E2E_ADMIN_PASSWORD),
     },
   },
 });

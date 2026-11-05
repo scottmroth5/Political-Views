@@ -43,7 +43,7 @@ async function profile(cookie: string): Promise<ProfileDto> {
 /** A multi-select question with at least three non-exclusive choices. */
 async function multiQuestion() {
   const all = await prisma.question.findMany({
-    where: { responseType: "MULTI_CHOICE" },
+    where: { responseType: "MULTI_CHOICE", archivedAt: null },
     orderBy: { slug: "asc" },
   });
   for (const q of all) {
@@ -221,7 +221,7 @@ describe("GET /api/profile", () => {
   it("shows the preview after three answered questions, with coverage gaps", async () => {
     const cookie = await startSession();
     const questions = await prisma.question.findMany({
-      where: { responseType: "SINGLE_CHOICE" },
+      where: { responseType: "SINGLE_CHOICE", archivedAt: null },
       include: { topic: true },
       orderBy: { slug: "asc" },
     });

@@ -100,8 +100,8 @@ Already done from the list above: 4 (Playwright smoke tests) and 5 (purge is sch
 
 Next, in order:
 
-1. ~~Editorial review tooling~~ (ticket 16) done 2026-11-05 (docs/editorial-review.md, D-024).
-   The review itself (tickets 2 and 12) is yours to do with `npm run review:questions`.
+1. ~~Editorial review tooling~~ (ticket 16): done as admin question management (D-025,
+   docs/editorial-review.md). The review itself (tickets 2 and 12) happens in `/admin`.
 2. **Portable JSON export** of the profile (PRD "Download portable JSON profile").
 3. **M4 selection signals:** use importance ratings and coverage gaps to rank the next question.
 4. **M3 AI chat** (tickets 6–8), adapter and fake provider first; no paid provider without approval.

@@ -13,6 +13,8 @@ export function AnalyticsBoot({ config }: { config: { host: string; token: strin
   }, [config]);
 
   useEffect(() => {
+    // Admin pages are not counted.
+    if (pathname === "/admin" || pathname.startsWith("/admin/")) return;
     track("page_viewed", { page: pageFromPath(pathname) });
   }, [pathname]);
 

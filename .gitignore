@@ -39,4 +39,3 @@ dist-scripts/
 
 # personal terms the pre-commit check blocks (never committed)
 .personal-terms
-editorial-review.md

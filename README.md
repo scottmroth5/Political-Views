@@ -18,6 +18,9 @@ match scores.**
 - Profile (`/profile`): each selected choice becomes a suggested belief, worded exactly as the choice
   (no AI). Confirm, reword, reject, and rate importance and conviction; coverage by issue area. The
   preview opens after 3 answered questions. Confirmed beliefs are never changed automatically (D-023)
+- Admin (`/admin`, password from `ADMIN_PASSWORD_HASH`): add, copy, mark reviewed and archive
+  questions, with the time of each. Questions are never edited or deleted; the database refuses
+  both (D-025, docs/editorial-review.md)
 - Mode switching that keeps all answers; session deletion that removes all data
 
 **Not built yet (labeled in the UI, not simulated):** open conversation / AI extraction, accounts,
@@ -56,7 +59,7 @@ On Windows PowerShell use `Copy-Item .env.example .env` instead of `cp`.
 | `npm run db:migrate`              | Create/apply a migration after editing `prisma/schema.prisma`                                                               |
 | `npm run db:reset`                | Drop, re-migrate and re-seed the dev database                                                                               |
 | `npm run sessions:purge`          | Delete expired anonymous sessions and their data                                                                            |
-| `npm run review:questions`        | Editorial review sheet; `-- mark <slug>` / `unmark` / `status` (see docs/editorial-review.md)                               |
+| `npm run admin:password`          | Create the admin password and its `ADMIN_PASSWORD_HASH` (see docs/editorial-review.md)                                      |
 | `npm run test:e2e`                | Playwright + axe on the production build (`npm run build` first; needs `db:up`; one-time `npx playwright install chromium`) |
 | `npm run check:secrets`           | Secret/personal-data check of staged files (runs as the pre-commit hook; `-- --all` for every file)                         |
 
@@ -78,9 +81,9 @@ Postgres with TLS required), with age-encrypted nightly backups. Setup, encrypti
 ## Project layout
 
 ```
-src/app/            routes: welcome, /discovery/{guided,conversation}, /profile, /privacy, /api/*
-src/components/     onboarding/, discovery/, profile/
-src/domain/         sessions/, questions/, responses/, beliefs/, profiles/ — business logic + Prisma
+src/app/            routes: welcome, /discovery/{guided,conversation}, /profile, /privacy, /admin, /api/*
+src/components/     onboarding/, discovery/, profile/, admin/
+src/domain/         sessions/, questions/, responses/, beliefs/, profiles/, admin/ — business logic + Prisma
                     repositories
 src/lib/            env, db client, http helpers (CSRF/body limits), cookies, redacting logger,
                     allowlisted analytics
@@ -95,18 +98,22 @@ docs/               decisions.md, roadmap.md, deployment-plan.md
 
 ## API (implemented)
 
-| Endpoint                       | Behavior                                                        |
-| ------------------------------ | --------------------------------------------------------------- |
-| `POST /api/sessions`           | Create anonymous session + cookie (reuses an active one)        |
-| `GET /api/sessions/current`    | Session, mode and progress                                      |
-| `PATCH /api/sessions/current`  | Change mode                                                     |
-| `DELETE /api/sessions/current` | Delete session and all associated data                          |
-| `GET /api/questions/next`      | Next eligible curated question (or `null`) + progress           |
-| `GET /api/questions/:id`       | One question plus this session's earlier answer (for edits)     |
-| `POST /api/responses`          | Save/edit a guided answer, idempotent via `idempotencyKey`      |
-| `GET /api/beliefs`             | This session's suggested, confirmed and rejected beliefs        |
-| `PATCH /api/beliefs/:id`       | Confirm, reject, reword or rate; `version` check (409 if stale) |
-| `GET /api/profile`             | Preliminary profile: beliefs by issue area, coverage, gaps      |
+| Endpoint                                | Behavior                                                                |
+| --------------------------------------- | ----------------------------------------------------------------------- |
+| `POST /api/sessions`                    | Create anonymous session + cookie (reuses an active one)                |
+| `GET /api/sessions/current`             | Session, mode and progress                                              |
+| `PATCH /api/sessions/current`           | Change mode                                                             |
+| `DELETE /api/sessions/current`          | Delete session and all associated data                                  |
+| `GET /api/questions/next`               | Next eligible curated question (or `null`) + progress                   |
+| `GET /api/questions/:id`                | One question plus this session's earlier answer (for edits)             |
+| `POST /api/responses`                   | Save/edit a guided answer, idempotent via `idempotencyKey`              |
+| `GET /api/beliefs`                      | This session's suggested, confirmed and rejected beliefs                |
+| `PATCH /api/beliefs/:id`                | Confirm, reject, reword or rate; `version` check (409 if stale)         |
+| `POST/DELETE /api/admin/session`        | Admin sign-in (throttled) / sign-out                                    |
+| `POST /api/admin/questions`             | Add a question (draft), optionally copied from another and archiving it |
+| `POST /api/admin/questions/:id/review`  | Mark a draft reviewed (one way)                                         |
+| `POST /api/admin/questions/:id/archive` | Archive (one way); answers are kept                                     |
+| `GET /api/profile`                      | Preliminary profile: beliefs by issue area, coverage, gaps              |
 
 Errors use `{ "error": { "code", "message", "details?" } }` and never echo submitted content.
 

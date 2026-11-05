@@ -130,6 +130,12 @@ export function GuidedDiscovery({ editQuestionId }: { editQuestionId?: string })
         router.replace("/?expired=1");
         return;
       }
+      if (e instanceof ApiError && e.code === "QUESTION_NOT_FOUND" && !editing) {
+        // The question was retired while it was on screen: move on to the next one.
+        await loadNext();
+        setError("That question was just retired, so here is the next one.");
+        return;
+      }
       setError(e instanceof Error ? e.message : "Your answer was not saved. Please try again.");
     } finally {
       setSubmitting(false);

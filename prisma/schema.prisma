@@ -103,11 +103,15 @@ model Topic {
   @@index([categoryId])
 }
 
+// Questions are immutable once created (enforced by a database trigger, see the
+// 20261105180000_admin_questions migration): to change one, copy it and archive the original.
+// Only archivedAt, editorialStatus/reviewedAt (one way) and displayOrder may change; rows are never
+// deleted, so answers always point at the exact wording the user saw.
 model Question {
   id                String          @id @default(uuid()) @db.Uuid
   topicId           String          @db.Uuid
   topic             Topic           @relation(fields: [topicId], references: [id], onDelete: Restrict)
-  // Stable key so seeding is idempotent and content can be versioned.
+  // Stable key: seeding inserts seed questions whose slug is missing and never touches others.
   slug              String          @unique
   prompt            String
   explanationPrompt String?
@@ -116,13 +120,21 @@ model Question {
   // An exclusive choice (e.g. "keep the current approach") cannot be combined with others.
   choices           Json?
   version           Int             @default(1)
-  active            Boolean         @default(true)
   editorialStatus   EditorialStatus @default(DRAFT)
   displayOrder      Int             @default(0)
+  createdAt         DateTime        @default(now())
+  reviewedAt        DateTime?
+  // Archived questions are no longer asked; existing answers to them are kept.
+  archivedAt        DateTime?
+  // The question this one was copied from, if any.
+  copiedFromId      String?         @db.Uuid
+  copiedFrom        Question?       @relation("QuestionCopies", fields: [copiedFromId], references: [id], onDelete: Restrict)
+  copies            Question[]      @relation("QuestionCopies")
   responses         Response[]
 
   @@index([topicId])
-  @@index([active, editorialStatus])
+  @@index([archivedAt, editorialStatus])
+  @@index([copiedFromId])
 }
 
 model Response {
@@ -219,4 +231,22 @@ model ProfileSnapshot {
   generatedAt DateTime         @default(now())
 
   @@index([sessionId, generatedAt])
+}
+
+// Admin sign-in (one admin, password hash in ADMIN_PASSWORD_HASH). Only the token's SHA-256 is stored.
+model AdminSession {
+  id        String   @id @default(uuid()) @db.Uuid
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([expiresAt])
+}
+
+// Failed admin sign-ins, counted to throttle guessing. No IP address or other detail is stored.
+model AdminLoginFailure {
+  id        String   @id @default(uuid()) @db.Uuid
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

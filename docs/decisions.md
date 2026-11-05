@@ -84,7 +84,7 @@ depth are M4. AI never selects questions.
 are stored with `editorialStatus = DRAFT`. `REQUIRE_REVIEWED_QUESTIONS=true` (required before
 beta) serves only REVIEWED questions. Editing a question's wording in the seed bumps its version
 and resets it to DRAFT. A human, ideally politically diverse, editorial review is required.
-Superseded in part by D-024: editorial status now comes from a reviews file.
+Superseded by D-025: questions are managed in /admin and never edited.
 
 ## D-013 — Belief.topicId is nullable
 
@@ -198,7 +198,7 @@ links to the response through `BeliefEvidence`, which records the choice
 - Conversation-mode extraction (M3) will add SUGGESTED beliefs with `choiceValue` null and an
   `extractionConfidence`; the same ownership rules apply.
 
-## D-024 — Editorial reviews recorded in the repo, tied to exact wording (2026-11-05)
+## D-024 — Editorial reviews recorded in the repo, tied to exact wording (2026-11-05) — superseded by D-025
 
 `prisma/editorial-reviews.json` lists reviewed questions as `{ slug, contentHash, reviewedOn, note? }`.
 The hash covers everything a user sees (prompt, explanation prompt, single vs. multi-select, and
@@ -206,3 +206,23 @@ each choice's value, label, exclusivity and order), so any wording change return
 DRAFT until it is reviewed again. Seeding sets every question's status from the file (no database
 or admin UI needed, and the review history is in git). `npm run review:questions` writes a review
 sheet and marks or withdraws reviews. The file is public, so it holds no reviewer names.
+
+## D-025 — Questions managed in the database; never edited or deleted (2026-11-05)
+
+Questions live in the database and the admin manages them at `/admin`: add, copy (into a new
+question, optionally archiving the original in the same transaction), mark reviewed, archive.
+Each question records `createdAt`, `reviewedAt`, `archivedAt` and `copiedFromId`.
+
+- **Immutable content, enforced by Postgres:** the `Question_immutable` trigger refuses changes to
+  wording, choices, type, topic, slug, version or lineage, refuses deletes, and makes archiving and
+  reviewing one-way. A CHECK ties REVIEWED to `reviewedAt`. Every answer therefore points at the
+  exact wording the user saw, which made D-024's content fingerprints unnecessary (removed).
+- **Seeding** inserts seed questions whose slug is missing, as DRAFT, and never touches existing
+  ones; `seed-data.ts` is only the starting set.
+- **Archived questions** are not asked or answerable; existing answers stay in history ("Question
+  retired") and the profile, and no longer count toward progress or coverage.
+- **Admin auth:** one admin. `ADMIN_PASSWORD_HASH` (scrypt, N=2^15, format without `$` so .env
+  loaders don't expand it) from `npm run admin:password`; unset means admin is off (404). Sessions
+  in `AdminSession` (token SHA-256 only, 12 h, `__Host-pv_admin`, HttpOnly, SameSite=Strict).
+  After 10 failed sign-ins in 15 minutes sign-in pauses; failures are stored without IP or detail.
+  Admin writes require same-origin requests. Admin pages send no analytics.

@@ -41,13 +41,13 @@ export async function getNextQuestion(
   let answeredQuestions = 0;
 
   for (const r of responses) {
+    const question = byId.get(r.questionId);
+    // Answers to archived (or not yet reviewed) questions are kept but don't count toward progress.
+    if (!question) continue;
     respondedQuestionIds.add(r.questionId);
     if (r.outcome !== "SKIPPED") answeredQuestions++;
-    const question = byId.get(r.questionId);
-    if (question) {
-      const categoryId = question.topic.categoryId;
-      responsesPerCategory.set(categoryId, (responsesPerCategory.get(categoryId) ?? 0) + 1);
-    }
+    const categoryId = question.topic.categoryId;
+    responsesPerCategory.set(categoryId, (responsesPerCategory.get(categoryId) ?? 0) + 1);
   }
 
   const candidates: (CandidateQuestion & { source: ServableQuestion })[] = questions.map((q) => ({
