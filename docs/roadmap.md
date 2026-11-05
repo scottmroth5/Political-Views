@@ -61,3 +61,10 @@ Repo-side deployment and security testing are in place (deployment-plan.md, Phas
 19. **Image pins updated by hand:** postgres and caddy in deploy/compose.yml and aws-cli in
     backup.sh (Dependabot covers npm, Actions and the Dockerfile base image).
 20. **Runbook** (deploy, roll back, restore, rotate, incident response, data deletion requests).
+21. **Dev-tool advisories (not shipped):** Vitest 3's Tinypool (critical, prototype-pollution RCE in
+    worker options) and @vitest/mocker (moderate) need Vitest ≥ 4.1.12, but npm 10.9 crashes
+    resolving Vitest 4's optional peers (`edgesOut` error); retry with npm 11 or Vitest 5. minimatch
+    (moderate, ReDoS) is pinned by ESLint's plugins. CI's audit gate covers shipped dependencies
+    only (`--omit=dev`), which are clean via the `postcss` and `deepmerge-ts` overrides in
+    package.json.
+22. **Next.js 16 upgrade** (removes the need for the postcss override; middleware becomes proxy).

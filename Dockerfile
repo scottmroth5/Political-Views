@@ -24,13 +24,13 @@ FROM deps AS build
 COPY . .
 RUN npm run build && npm run build:scripts
 
-# The Prisma CLI (same version as package.json) for `migrate deploy`, kept apart from the app.
+# The Prisma CLI (same version and security overrides as package.json) for `migrate deploy`, kept
+# apart from the app.
 FROM base AS tools
 WORKDIR /tools
 COPY package.json /tmp/package.json
-RUN npm init -y >/dev/null \
- && npm install --no-audit --no-fund --save-exact \
-      "prisma@$(node -p "require('/tmp/package.json').devDependencies.prisma")" \
+RUN node -e "const p=require('/tmp/package.json'); require('fs').writeFileSync('package.json', JSON.stringify({ name: 'tools', private: true, dependencies: { prisma: p.devDependencies.prisma }, overrides: p.overrides }))" \
+ && npm install --no-audit --no-fund \
  && rm -rf /root/.npm
 
 FROM node:22-bookworm-slim AS runtime

@@ -1,0 +1,15 @@
+# gitleaks configuration: the default rules, plus one narrow allowlist for synthetic test fixtures.
+# Both conditions must hold (a file under tests/ AND an obviously fake value), so a real secret in a
+# test file is still caught.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic test fixtures: fake PostHog tokens and random UUIDs, never real credentials"
+condition = "AND"
+paths = ['''^tests/''']
+regexTarget = "match"
+regexes = [
+  '''phc_(testtoken|abcdefghij)[0-9]*''',
+  '''[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}''',
+]
