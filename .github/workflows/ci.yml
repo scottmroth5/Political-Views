@@ -84,7 +84,7 @@ jobs:
       - run: npm run test:e2e
       - name: Keep the Playwright report
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: playwright-report/
@@ -110,7 +110,7 @@ jobs:
           [ "$high" -eq 0 ] || { echo "Fix the high-risk ZAP alerts above." >&2; exit 1; }
       - name: Keep the ZAP report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: zap-report
           path: zap/
