@@ -10,7 +10,6 @@ import { hashAdminPassword } from "@/domain/admin/admin-password";
 import { LOGIN_FAILURE_LIMIT } from "@/domain/admin/admin-session";
 import { listGuidedAnswers } from "@/domain/responses/response-service";
 import { prisma } from "@/lib/db";
-import { resetEnvCacheForTests } from "@/lib/env";
 import { seedTaxonomy } from "../../prisma/seed-taxonomy";
 import { apiRequest, guidedAnswer, sessionCookieFrom } from "./helpers";
 
@@ -21,7 +20,6 @@ const created: string[] = [];
 function enableAdmin(hash: string | undefined = HASH) {
   if (hash === undefined) delete process.env.ADMIN_PASSWORD_HASH;
   else process.env.ADMIN_PASSWORD_HASH = hash;
-  resetEnvCacheForTests();
 }
 
 async function adminCookie(): Promise<string> {

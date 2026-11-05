@@ -30,11 +30,7 @@ export function getEnv(): Env {
     const names = parsed.error.issues.map((i) => i.path.join(".")).join(", ");
     throw new Error(`Invalid or missing environment variables: ${names}`);
   }
-  cached = parsed.data;
-  return cached;
-}
-
-/** Tests only: forget the cached environment so a changed process.env takes effect. */
-export function resetEnvCacheForTests(): void {
-  cached = undefined;
+  // Tests change process.env between cases (e.g. turning admin on and off), so never cache there.
+  if (parsed.data.NODE_ENV !== "test") cached = parsed.data;
+  return parsed.data;
 }
